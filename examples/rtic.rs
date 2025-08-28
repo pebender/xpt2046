@@ -1,6 +1,8 @@
 #![no_main]
 #![no_std]
 
+use panic_semihosting as _;
+
 #[rtic::app(device = stm32f4xx_hal::pac)]
 mod app {
     use stm32f4xx_hal::{
@@ -58,14 +60,14 @@ mod app {
     #[init]
     fn init(ctx: init::Context) -> (Shared, Local, init::Monotonics) {
         let mut dp = ctx.device;
-        let cp = ctx.core;
+        let _cp = ctx.core;
 
         let rcc = dp.RCC.constrain();
         let clocks = rcc.cfgr.use_hse(25.MHz()).sysclk(100.MHz()).freeze();
 
         let gpioa = dp.GPIOA.split();
-        let gpiob = dp.GPIOB.split();
-        let gpioc = dp.GPIOC.split();
+        let _gpiob = dp.GPIOB.split();
+        let _gpioc = dp.GPIOC.split();
 
         let mode = Mode {
             polarity: Polarity::IdleLow,
@@ -97,7 +99,7 @@ mod app {
             MyIrq(touch_irq),
             xpt2046::Orientation::PortraitFlipped,
         );
-        xpt_drv.init(&mut delay);
+        xpt_drv.init(&mut delay).unwrap();
 
         (
             Shared {
@@ -113,14 +115,17 @@ mod app {
     fn idle(ctx: idle::Context) -> ! {
         let mut xpt_drv = ctx.shared.xpt_drv;
         let mut exti = ctx.shared.exti;
-        let mut delay = ctx.local.delay;
+        let delay = ctx.local.delay;
 
         loop {
             xpt_drv.lock(|xpt| {
-                exti.lock(|e| xpt.run(e));
+                exti.lock(|e| xpt.run(e)).unwrap();
                 if xpt.is_touched() {
-                    let p = xpt.get_touch_point();
-                    defmt::println!("x:{} y:{}", p.x, p.y);
+                    #[cfg(feature = "with_defmt")]
+                    {
+                        let p = xpt.get_touch_point();
+                        defmt::println!("x:{} y:{}", p.x, p.y);
+                    }
                 }
             });
             delay.delay_ms(1u32);
