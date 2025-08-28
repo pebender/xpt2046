@@ -6,7 +6,7 @@ use panic_semihosting as _;
 #[rtic::app(device = stm32f4xx_hal::pac)]
 mod app {
     use stm32f4xx_hal::{
-        gpio::{Alternate, Edge, Input, Output, Pin, PushPull},
+        gpio::{Edge, Input, Output, Pin, PushPull},
         pac::{EXTI, SPI1, TIM1},
         prelude::*,
         spi::{Mode, Phase, Polarity, Spi},
@@ -38,14 +38,7 @@ mod app {
             self.0.is_low()
         }
     }
-    type TouchSpi = Spi<
-        SPI1,
-        (
-            Pin<'A', 5, Alternate<5>>,
-            Pin<'A', 6, Alternate<5>>,
-            Pin<'A', 7, Alternate<5>>,
-        ),
-    >;
+    type TouchSpi = Spi<SPI1>;
     #[shared]
     struct Shared {
         xpt_drv: Xpt2046<TouchSpi, Pin<'A', 4, Output<PushPull>>, MyIrq<'A', 2>>,

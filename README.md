@@ -10,8 +10,7 @@ Rust Embedded Hal based driver for xpt2046 touch screen driver
 
 I forked VersBinarii's xpt2046 driver because I wanted to make the following changes:
 
-- [ ] Update the [embedded-hal](https://github.com/rust-embedded/embedded-hal/tree/master/embedded-hal) to 1.x,
-because there are incompatibilities between version 1.0.0-alpha.7 and 1.0.0,
+- [x] Update the [embedded-hal](https://github.com/rust-embedded/embedded-hal/tree/master/embedded-hal) to 1.x,
 - [ ] Replace the [STM32](https://github.com/stm32-rs/stm32f4xx-hal)+[RTIC](https://github.com/rtic-rs/rtic) example with an [ESP32](https://github.com/esp-rs/esp-hal)+[embassy](https://github.com/embassy-rs/embassy) example,
 - [ ] Refactor the PENIRQ interrupt handler code, and
 - [ ] Replace the driver's use of [embedded-hal's SpiBus trait](https://docs.esp-rs.org/esp-idf-hal/embedded_hal/spi/trait.SpiBus.html) with the [embedded-hal's SpiDevice trait](https://docs.esp-rs.org/esp-idf-hal/embedded_hal/spi/trait.SpiDevice.html).
