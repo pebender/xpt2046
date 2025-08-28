@@ -1,0 +1,13 @@
+[target.thumbv7em-none-eabihf]
+runner = "probe-run - chip stm32f411"
+
+[target.riscv32imac-unknown-none-elf]
+runner = "espflash flash --monitor --chip esp32c6"
+rustflags = [
+  # According to <hhttps://github.com/esp-rs/esp-hal/tree/main/esp-backtrace>,
+  # this is needed for esp-backtrace to work on RISC-V processors such as the
+  # one found in the esp32c6. However, it could negatively impact code's performance.
+  "-C", "force-frame-pointers",
+
+  "-C", "link-arg=-Tlinkall.x",
+]

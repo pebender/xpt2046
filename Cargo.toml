@@ -12,26 +12,49 @@ repository = "https://github.com/VersBinarii/xpt2046"
 [lib]
 name = "xpt2046"
 
-[dependencies]
-embedded-hal = "1.0.0"
-embedded-graphics = "0.7.1"
-embedded-graphics-core = "0.3.3"
-defmt = { version = "0.3.0", optional = true }
-
-[dev-dependencies]
-cortex-m-rtic = "1.0.0"
-cortex-m = "0.7.3"
-cortex-m-rt = "0.7.0"
-defmt-rtt = "0.3.0"
-panic-semihosting = "0.6"
-ili9341 = "0.5.0"
-
-[dev-dependencies.stm32f4xx-hal]
-version = "0.22.1"
-features = ["stm32f411"]
-
 [features]
 with_defmt = ["defmt"]
 
+[dependencies]
+defmt = { version = "0.3.0", optional = true }
+embedded-graphics = "0.7.1"
+embedded-graphics-core = "0.3.3"
+embedded-hal = "1.0.0"
+
+[target.riscv32imac-unknown-none-elf.dev-dependencies]
+critical-section = { version = "1.2.0" }
+# esp-hal 1.0.0-rc.0 depends on embassy-embedded-hal 0.3.x/0.4.0.
+embassy-embedded-hal = { version = "0.4.0" }
+# esp-hal-embassy 0.9.0 depends on embassy-executor 0.7.0. However, the
+# embassy-executor override below gives us the 0.8.0 changes without the version
+# number change from 0.7.0 to 0.8.0.
+embassy-executor = { version = "0.7.0" }
+embassy-time = { version = "0.5.0" }
+esp-backtrace = { version = "0.17.0", features = [ "esp32c6", "println", "panic-handler", "exception-handler" ] }
+esp-bootloader-esp-idf = { version = "0.2.0", features = [ "esp32c6", "log-04" ] }
+esp-hal = { version = "=1.0.0-rc.0", features = [ "esp32c6", "log-04", "unstable" ] }
+esp-hal-embassy = { version = "0.9.0", features = [ "esp32c6", "log-04" ] }
+esp-println = { version = "0.15.0", features = [ "esp32c6", "log-04" ] }
+
+[target.thumbv7em-none-eabihf.dev-dependencies]
+cortex-m = "0.7.3"
+cortex-m-rt = "0.7.0"
+cortex-m-rtic = "1.0.0"
+defmt-rtt = "0.3.0"
+ili9341 = "0.5.0"
+panic-semihosting = "0.6"
+stm32f4xx-hal = { version = "0.22.1", features = ["stm32f411"] }
+
+[patch.crates-io]
+# embassy-executor 0.8.0 is required to statically allocate task pools without
+# using the nightly compiler and enabling feature(impl_trait_in_assoc_type).
+# However, esp-hal-embassy 0.9.0 depends on embassy-executor 0.7.0, so we
+# override embassy-executor with its git version just before its version number
+# was changed from 0.7.0 to 0.8.0.
+embassy-executor = { git = "https://github.com/embassy-rs/embassy.git", rev = "98595f659c309703aab411b6b3be7579b6e93c5d" }
+
 [[example]]
-name = "rtic"
+name = "esp32c6-embassy"
+
+[[example]]
+name = "stm32f411-rtic"

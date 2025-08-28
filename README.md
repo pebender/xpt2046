@@ -11,13 +11,13 @@ Rust Embedded Hal based driver for xpt2046 touch screen driver
 I forked VersBinarii's xpt2046 driver because I wanted to make the following changes:
 
 - [x] Update the [embedded-hal](https://github.com/rust-embedded/embedded-hal/tree/master/embedded-hal) to 1.x,
-- [ ] Replace the [STM32](https://github.com/stm32-rs/stm32f4xx-hal)+[RTIC](https://github.com/rtic-rs/rtic) example with an [ESP32](https://github.com/esp-rs/esp-hal)+[embassy](https://github.com/embassy-rs/embassy) example,
+- [x] Add an [ESP32](https://github.com/esp-rs/esp-hal)+[embassy](https://github.com/embassy-rs/embassy) example,
 - [ ] Refactor the PENIRQ interrupt handler code, and
 - [ ] Replace the driver's use of [embedded-hal's SpiBus trait](https://docs.esp-rs.org/esp-idf-hal/embedded_hal/spi/trait.SpiBus.html) with the [embedded-hal's SpiDevice trait](https://docs.esp-rs.org/esp-idf-hal/embedded_hal/spi/trait.SpiDevice.html).
 
 There are are incompatibilities between embedded-hal version 1.0.0-alpha.7 and 1.0.0. As a result, the existing xpt2046 driver is not compatible with HALs that implement final embedded-hal 1.0.0 release.
 
-I have ESP32 hardware and embassy experience but I have neither STM32 hardware nor RTIC experience. Therefore, I cannot test the existing example without buying STM32 hardware and learning RTIC. Also, while I love playing new hardware and new software, the project in which I will be using the xpt2046 driver runs on an ESP32-C6 and uses embassy. So, an example the runs on an ESP32 and uses embassy makes the most sense right now.
+I have [ESP32](https://github.com/esp-rs/esp-hal) hardware and [embassy](https://github.com/embassy-rs/embassy) experience but I have neither [STM32](https://github.com/stm32-rs/stm32f4xx-hal) hardware nor [RTIC](https://github.com/rtic-rs/rtic) experience. Therefore, I cannot test the existing example without buying STM32 hardware and learning RTIC. Also, while I love playing new hardware and new software, the project in which I will be using the xpt2046 driver runs on an ESP32-C6 and uses embassy. So, an example the runs on an ESP32 and uses embassy makes the most sense right now. I will remove the STM32+RTIC when I can no longer get it to compile.
 
 [As stated](https://github.com/VersBinarii/xpt2046/blob/v0.3.0/src/exti_pin.rs), VersBinarii created the Xpt2046Exti trait because embedded-hal does not expose a generic interface for working with GPIO interrupt handlers. As it turns out, the Xpt2046Exti trait is awkward to use with how ESP32 handles GPIO interrupts. For example, the esp-hal does not expose an external interrupt peripheral that must be safely shared, so there is nothing to pass to the Xpt2046Exti trait's interrupt control functions.
 

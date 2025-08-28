@@ -186,7 +186,7 @@ pub struct Xpt2046<SPI, CS, PinIRQ> {
     /// Control pin
     cs: CS,
     /// Interrupt control pin
-    irq: PinIRQ,
+    pub irq: PinIRQ,
     /// Internall buffers tx
     tx_buff: [u8; TX_BUFF_LEN],
     /// Internal buffer for rx
