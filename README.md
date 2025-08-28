@@ -13,7 +13,7 @@ I forked VersBinarii's xpt2046 driver because I wanted to make the following cha
 - [x] Update the [embedded-hal](https://github.com/rust-embedded/embedded-hal/tree/master/embedded-hal) to 1.x,
 - [x] Add an [ESP32](https://github.com/esp-rs/esp-hal)+[embassy](https://github.com/embassy-rs/embassy) example,
 - [ ] Refactor the PENIRQ interrupt handler code, and
-- [ ] Replace the driver's use of [embedded-hal's SpiBus trait](https://docs.esp-rs.org/esp-idf-hal/embedded_hal/spi/trait.SpiBus.html) with the [embedded-hal's SpiDevice trait](https://docs.esp-rs.org/esp-idf-hal/embedded_hal/spi/trait.SpiDevice.html).
+- [x] Replace the driver's use of [embedded-hal's SpiBus trait](https://docs.esp-rs.org/esp-idf-hal/embedded_hal/spi/trait.SpiBus.html) with the [embedded-hal's SpiDevice trait](https://docs.esp-rs.org/esp-idf-hal/embedded_hal/spi/trait.SpiDevice.html).
 
 There are are incompatibilities between embedded-hal version 1.0.0-alpha.7 and 1.0.0. As a result, the existing xpt2046 driver is not compatible with HALs that implement final embedded-hal 1.0.0 release.
 

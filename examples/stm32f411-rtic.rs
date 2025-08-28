@@ -6,7 +6,7 @@ use panic_semihosting as _;
 #[rtic::app(device = stm32f4xx_hal::pac)]
 mod app {
     use stm32f4xx_hal::{
-        gpio::{Edge, Input, Output, Pin, PushPull},
+        gpio::{Edge, Input, Output, Pin},
         pac::{EXTI, SPI1, TIM1},
         prelude::*,
         spi::{Mode, Phase, Polarity, Spi},
@@ -38,10 +38,14 @@ mod app {
             self.0.is_low()
         }
     }
-    type TouchSpi = Spi<SPI1>;
+    type TouchSpi = embedded_hal_bus::spi::ExclusiveDevice<
+        Spi<SPI1>,
+        Pin<'A', 4, Output>,
+        embedded_hal_bus::spi::NoDelay,
+    >;
     #[shared]
     struct Shared {
-        xpt_drv: Xpt2046<TouchSpi, Pin<'A', 4, Output<PushPull>>, MyIrq<'A', 2>>,
+        xpt_drv: Xpt2046<TouchSpi, MyIrq<'A', 2>>,
         exti: EXTI,
     }
 
@@ -78,17 +82,22 @@ mod app {
         let touch_clk = gpioa.pa5.into_alternate();
         let touch_mosi = gpioa.pa7.into_alternate().internal_pull_up(true);
         let touch_miso = gpioa.pa6.into_alternate();
-        let touch_spi = Spi::new(
+        let spi = Spi::new(
             dp.SPI1,
             (touch_clk, touch_miso, touch_mosi),
             mode,
             2.MHz(),
             &clocks,
         );
-
-        let mut xpt_drv = Xpt2046::new(
-            touch_spi,
+        let spi_bus = spi;
+        let touch_spi_device = embedded_hal_bus::spi::ExclusiveDevice::new(
+            spi_bus,
             touch_cs,
+            embedded_hal_bus::spi::NoDelay,
+        )
+        .unwrap();
+        let mut xpt_drv = Xpt2046::new(
+            touch_spi_device,
             MyIrq(touch_irq),
             xpt2046::Orientation::PortraitFlipped,
         );

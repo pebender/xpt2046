@@ -10,7 +10,9 @@ use esp_backtrace as _;
 use esp_println as _;
 use esp_println::println;
 
+use embassy_embedded_hal::shared_bus::blocking::spi::SpiDeviceWithConfig;
 use embassy_executor::Spawner;
+use embassy_sync::{blocking_mutex, blocking_mutex::raw::CriticalSectionRawMutex};
 use embassy_time::{Delay, Duration, Timer};
 
 use esp_hal::peripherals::{
@@ -66,26 +68,33 @@ async fn main(spawner: Spawner) -> ! {
     esp_hal_embassy::init(timer0.alarm0);
 
     // Set up the shared SPI bus.
-    let spi_config =
-        esp_hal::spi::master::Config::default().with_frequency(esp_hal::time::Rate::from_mhz(1));
+    let spi_config = esp_hal::spi::master::Config::default();
     let spi = esp_hal::spi::master::Spi::new(peripheral_map.spi, spi_config)
         .unwrap()
         .with_sck(peripheral_map.spi_sclk)
         .with_miso(peripheral_map.spi_miso)
         .with_mosi(peripheral_map.spi_mosi);
+    let spi_bus =
+        blocking_mutex::Mutex::<CriticalSectionRawMutex, _>::new(core::cell::RefCell::new(spi));
+
     let touch_cs = esp_hal::gpio::Output::new(
         peripheral_map.touch_cs,
         esp_hal::gpio::Level::High,
         esp_hal::gpio::OutputConfig::default(),
     );
+    // Set up the SPI device.
+    let touch_spi_config = esp_hal::spi::master::Config::default()
+        .with_mode(esp_hal::spi::Mode::_0)
+        .with_frequency(esp_hal::time::Rate::from_mhz(1));
+    let touch_spi_device = SpiDeviceWithConfig::new(&spi_bus, touch_cs, touch_spi_config);
+
     let touch_irq: esp_hal::gpio::Input<'_> = esp_hal::gpio::Input::new(
         peripheral_map.touch_irq,
         esp_hal::gpio::InputConfig::default().with_pull(esp_hal::gpio::Pull::Up),
     );
 
     let mut touch = xpt2046::Xpt2046::new(
-        spi,
-        touch_cs,
+        touch_spi_device,
         MyIrq(touch_irq),
         xpt2046::Orientation::PortraitFlipped,
     );
