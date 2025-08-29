@@ -16,9 +16,9 @@ name = "xpt2046"
 with_defmt = ["defmt"]
 
 [dependencies]
-defmt = { version = "0.3.0", optional = true }
-embedded-graphics = "0.8.1"
-embedded-hal = "1.0.0"
+defmt = { version = "1.0.1", optional = true }
+embedded-graphics = { version = "0.8.1" }
+embedded-hal = { version = "1.0.0" }
 
 [target.riscv32imac-unknown-none-elf.dev-dependencies]
 # esp-hal 1.0.0-rc.0 depends on embassy-embedded-hal 0.3.x/0.4.0.
@@ -39,13 +39,13 @@ mipidsi = { version = "0.9.0" }
 static_cell = { version = "2.1.1" }
 
 [target.thumbv7em-none-eabihf.dev-dependencies]
-cortex-m = "0.7.3"
-cortex-m-rt = "0.7.0"
-cortex-m-rtic = "1.0.0"
+cortex-m = { version = "0.7.7" }
+cortex-m-rt = { version = "0.7.5" }
+cortex-m-rtic = { version = "1.1.4" }
 critical-section = { version = "1.2.0" }
-defmt-rtt = "0.3.0"
-embedded-hal-bus = "0.3.0"
-panic-semihosting = "0.6"
+defmt-rtt = { version = "1.0.0" }
+embedded-hal-bus = { version = "0.3.0" }
+panic-semihosting = { version = "0.6" }
 stm32f4xx-hal = { version = "0.22.1", features = ["stm32f411"] }
 
 [patch.crates-io]
