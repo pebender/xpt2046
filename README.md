@@ -25,9 +25,9 @@ THe [embedded-hal SPI documentation](https://docs.rs/embedded-hal/latest/embedde
 
 ## Documentation
 
-[View Complete Documentation Here](https://docs.rs/xpt2046)
+There is no online documentation at the moment. However, you can generate by checking out the code and running the command
 
-![demo](touch_rust.png)
+> cargo doc --open --no-deps
 
 ## License
 

@@ -3,10 +3,11 @@ name = "xpt2046"
 version = "0.4.0"
 edition = "2021"
 description = "Embedded-hal based XPT2046 driver for TFT LCD displays"
-authors = ["VersBInarii <versbinarii@gmail.com>"]
-keywords = ["embedded-hal-driver", "xpt2046", "touch", "LCD", "no_std"]
+authors = ["VersBInarii <versbinarii@gmail.com>", "Paul Bender <pebender@gmail.com>"]
+categories = ["embedded", "no-std", "no-std::no-alloc"]
+keywords = ["xpt2046", "embedded-hal-driver", "touch"]
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/VersBinarii/xpt2046"
+repository = "https://github.com/pebender/xpt2046"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [lib]
@@ -30,11 +31,11 @@ embassy-executor = { version = "0.7.0" }
 embassy-sync = { version = "0.7.2" }
 embassy-time = { version = "0.5.0" }
 embedded-graphics = { version = "0.8.1" }
-esp-backtrace = { version = "0.17.0", features = [ "esp32c6", "println", "panic-handler", "exception-handler" ] }
-esp-bootloader-esp-idf = { version = "0.2.0", features = [ "esp32c6", "log-04" ] }
-esp-hal = { version = "=1.0.0-rc.0", features = [ "esp32c6", "log-04", "unstable" ] }
-esp-hal-embassy = { version = "0.9.0", features = [ "esp32c6", "log-04" ] }
-esp-println = { version = "0.15.0", features = [ "esp32c6", "log-04" ] }
+esp-backtrace = { version = "0.17.0", features = ["esp32c6", "println", "panic-handler", "exception-handler"] }
+esp-bootloader-esp-idf = { version = "0.2.0", features = ["esp32c6", "log-04"] }
+esp-hal = { version = "=1.0.0-rc.0", features = ["esp32c6", "log-04", "unstable"] }
+esp-hal-embassy = { version = "0.9.0", features = ["esp32c6", "log-04"] }
+esp-println = { version = "0.15.0", features = ["esp32c6", "log-04"] }
 mipidsi = { version = "0.9.0" }
 static_cell = { version = "2.1.1" }
 

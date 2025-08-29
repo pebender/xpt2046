@@ -1,7 +1,15 @@
 {
   "files.autoSave": "onFocusChange",
+  "files.associations": {
+    "LICENSE-APACHE": "plaintext",
+    "LICENSE-MIT": "plaintext"
+  },
   "rust-analyzer.cargo.allTargets": false,
   "rust-analyzer.cargo.target": "riscv32imac-unknown-none-elf",
+  "[json]": {
+    "editor.defaultFormatter": "vscode.json-language-features",
+    "editor.formatOnSave": true,
+  },
   "[rust]": {
     "editor.defaultFormatter": "rust-lang.rust-analyzer",
     "editor.formatOnSave": true
