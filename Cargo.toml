@@ -22,7 +22,6 @@ embedded-graphics-core = "0.4.0"
 embedded-hal = "1.0.0"
 
 [target.riscv32imac-unknown-none-elf.dev-dependencies]
-critical-section = { version = "1.2.0" }
 # esp-hal 1.0.0-rc.0 depends on embassy-embedded-hal 0.3.x/0.4.0.
 embassy-embedded-hal = { version = "0.4.0" }
 # esp-hal-embassy 0.9.0 depends on embassy-executor 0.7.0. However, the
@@ -38,6 +37,7 @@ esp-hal = { version = "=1.0.0-rc.0", features = [ "esp32c6", "log-04", "unstable
 esp-hal-embassy = { version = "0.9.0", features = [ "esp32c6", "log-04" ] }
 esp-println = { version = "0.15.0", features = [ "esp32c6", "log-04" ] }
 mipidsi = { version = "0.9.0" }
+static_cell = { version = "2.1.1" }
 
 [target.thumbv7em-none-eabihf.dev-dependencies]
 cortex-m = "0.7.3"
