@@ -1,10 +1,12 @@
-#![no_std]
-#![no_main]
+#![deny(unsafe_code)]
+#![deny(warnings)]
 #![deny(
     clippy::mem_forget,
     reason = "mem::forget is generally not safe to do with esp_hal types, especially those \
     holding buffers for the duration of a data transfer."
 )]
+#![no_std]
+#![no_main]
 
 use esp_backtrace as _;
 use esp_println as _;
