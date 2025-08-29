@@ -1,13 +1,11 @@
 use super::CalibrationData;
 use crate::error::CalibrationError;
 use embedded_graphics::{
-    primitives::{Line, Primitive, PrimitiveStyle},
-    Drawable,
-};
-use embedded_graphics_core::{
     draw_target::DrawTarget,
     geometry::Point,
     pixelcolor::{Rgb565, RgbColor},
+    primitives::{Line, Primitive, PrimitiveStyle},
+    Drawable,
 };
 
 #[cfg(feature = "with_defmt")]

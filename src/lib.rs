@@ -22,7 +22,7 @@
 use crate::calibration::{calculate_calibration, calibration_draw_point};
 pub use crate::{calibration::CalibrationPoint, error::Error, exti_pin::Xpt2046Exti};
 use core::{fmt::Debug, ops::RemAssign};
-use embedded_graphics_core::{
+use embedded_graphics::{
     draw_target::DrawTarget,
     geometry::Point,
     pixelcolor::{Rgb565, RgbColor},
@@ -125,7 +125,7 @@ impl Orientation {
 /// Current state of the driver
 #[derive(PartialEq, Debug)]
 pub enum TouchScreenState {
-    /// Driver waith for touch
+    /// Driver waits for touch
     IDLE,
     /// Driver debounces the touch
     PRESAMPLING,

@@ -18,7 +18,6 @@ with_defmt = ["defmt"]
 [dependencies]
 defmt = { version = "0.3.0", optional = true }
 embedded-graphics = "0.8.1"
-embedded-graphics-core = "0.4.0"
 embedded-hal = "1.0.0"
 
 [target.riscv32imac-unknown-none-elf.dev-dependencies]
@@ -46,7 +45,6 @@ cortex-m-rtic = "1.0.0"
 critical-section = { version = "1.2.0" }
 defmt-rtt = "0.3.0"
 embedded-hal-bus = "0.3.0"
-ili9341 = "0.5.0"
 panic-semihosting = "0.6"
 stm32f4xx-hal = { version = "0.22.1", features = ["stm32f411"] }
 
