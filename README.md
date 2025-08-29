@@ -1,31 +1,37 @@
-# XPT2046 touch LCD driver
+# XPT2046 Touch Screen Controller Driver
 
-[![Crates.io](https://img.shields.io/crates/d/xpt2046.svg)](https://crates.io/crates/xpt2046)
-[![Crates.io](https://img.shields.io/crates/v/xpt2046.svg)](https://crates.io/crates/xpt2046)
-[![Released API docs](https://docs.rs/xpt2046/badge.svg)](https://docs.rs/xpt2046)
+A driver for the **XPT2046 Touch Screen Controller** connected over **SPI** that is
 
-Rust Embedded Hal based driver for xpt2046 touch screen driver
+- written in [Rust](https://www.rust-lang.org),
+- compatible with [Rust Embedded's](https://github.com/rust-embedded) [embedded-hal 1.0.0](https://docs.rs/embedded-hal/1.0.0/embedded_hal/index.html),
+- no_std and
+- no_alloc.
+
+## Compatibility
+
+While I primarily develop on the [ESP32-C6](https://docs.espressif.com/projects/esp-hardware-design-guidelines/en/latest/esp32c6/product-overview.html), the driver should work on any 32-bit MCU. While I primarily develop using [esp-hal](https://docs.rs/esp-hal/latest/esp_hal/), the driver should work with any embedded-hal 1.0.0 compatible HAL. While I primarily develop using [Embassy](https://embassy.dev), the driver should work with [RTIC](https://rtic.rs).
+
+The XPT2046 is often paired with the ILI9341 TFT LCD Single Chip Driver to create 320x240 pixel TFT LCD display touch panels that connect over SPI and come in various sizes. For example, I have been developing using [Hosyond's 3.2" version](https://www.amazon.com/dp/B0B1M9S9V6/).
 
 ## Reasons for Forking [VersBinarii/xpt2046](https://github.com/VersBinarii/xpt2046)
 
-I forked VersBinarii's xpt2046 driver because I wanted to make the following changes:
+I forked VersBinarii's xpt2046 driver repository because as of the time I forked the repository, the driver
 
-- [x] Update the [embedded-hal](https://github.com/rust-embedded/embedded-hal/tree/master/embedded-hal) to 1.x,
-- [x] Add an [ESP32](https://github.com/esp-rs/esp-hal)+[embassy](https://github.com/embassy-rs/embassy) example,
-- [x] Refactor the PENIRQ interrupt handler code, and
-- [x] Replace the driver's use of [embedded-hal's SpiBus trait](https://docs.esp-rs.org/esp-idf-hal/embedded_hal/spi/trait.SpiBus.html) with the [embedded-hal's SpiDevice trait](https://docs.esp-rs.org/esp-idf-hal/embedded_hal/spi/trait.SpiDevice.html).
+- used embedded-hal 1.0.0-alpha.7,
+- used the [SpiBus trait](https://docs.esp-rs.org/esp-idf-hal/embedded_hal/spi/trait.SpiBus.html) rather than the [SpiDevice trait](https://docs.esp-rs.org/esp-idf-hal/embedded_hal/spi/trait.SpiDevice.html), and
+- integrated interrupt handling for the PENIRQ pin.
 
-There are are incompatibilities between embedded-hal version 1.0.0-alpha.7 and 1.0.0. As a result, the existing xpt2046 driver is not compatible with HALs that implement final embedded-hal 1.0.0 release.
+There are incompatibilities between embedded-hal version 1.0.0-alpha.7 and 1.0.0. As a result, the driver was not compatible with HALs that implement the final embedded-hal 1.0.0 release.
 
-I have [ESP32](https://github.com/esp-rs/esp-hal) hardware and [embassy](https://github.com/embassy-rs/embassy) experience but I have neither [STM32](https://github.com/stm32-rs/stm32f4xx-hal) hardware nor [RTIC](https://github.com/rtic-rs/rtic) experience. Therefore, I cannot test the existing example without buying STM32 hardware and learning RTIC. Also, while I love playing new hardware and new software, the project in which I will be using the xpt2046 driver runs on an ESP32-C6 and uses embassy. So, an example the runs on an ESP32 and uses embassy makes the most sense right now. I will remove the STM32+RTIC when I can no longer get it to compile.
+As stated in the [embedded-hal SPI documentation](https://docs.rs/embedded-hal/latest/embedded_hal/spi/index.html), the [SpiBus trait](https://docs.rs/embedded-hal/latest/embedded_hal/spi/trait.SpiBus.html) represents exclusive ownership of the SPI bus whereas the [SpiDevice trait](https://docs.rs/embedded-hal/latest/embedded_hal/spi/trait.SpiDevice.html) represents ownership of an SPI device selected by the CS (Chip Select) pin. SPI bus sharing software provided by [embedded-hal-bus](https://docs.rs/embedded-hal-bus/latest/embedded_hal_bus/spi/index.html) and [embassy-embedded-hal](https://docs.rs/embassy-embedded-hal/latest/embassy_embedded_hal/shared_bus/index.html) follow this, and using this SPI bus sharing software simplifies async programming.
 
-[As stated](https://github.com/VersBinarii/xpt2046/blob/v0.3.0/src/exti_pin.rs), VersBinarii created the Xpt2046Exti trait because embedded-hal does not expose a generic interface for working with GPIO interrupt handlers. As it turns out, the Xpt2046Exti trait is awkward to use with how ESP32 handles GPIO interrupts. For example, the esp-hal does not expose an external interrupt peripheral that must be safely shared, so there is nothing to pass to the Xpt2046Exti trait's interrupt control functions. In addition, when using the driver with an ESP32 in an async framework, the only time that an interrupt on the PENIRQ is really needed is when the PENIRQ is being uses to wake the processor from a sleep state.
+[As stated](https://github.com/VersBinarii/xpt2046/blob/v0.3.0/src/exti_pin.rs), VersBinarii created the a driver-specific trait for use in integrating PENIRQ interrupt handling into the driver because embedded-hal 1.0.0 does not expose a generic interface for working with GPIO interrupt handlers. As it turns out, the driver-specific trait is awkward to use with how the esp-hal handles GPIO interrupts. In addition, when using the driver with the esp-hal in an async framework, the only time an interrupt handler for the PENIRQ pn is really needed is when the PENIRQ pin is being used to wake the processor from a sleep state.
 
-THe [embedded-hal SPI documentation](https://docs.rs/embedded-hal/latest/embedded_hal/spi/index.html) states that the [SpiBus trait](https://docs.rs/embedded-hal/latest/embedded_hal/spi/trait.SpiBus.html) represents exclusive ownership of the SPI bus whereas the [SpiDevice trait](https://docs.rs/embedded-hal/latest/embedded_hal/spi/trait.SpiDevice.html) represents ownership of an SPI device selected by the CS (Chip Select) pin. Therefore, it is more correct to pass the the xpt2046 driver something that implements the SpiDevice trait rather than something that implements the SpiBut trait and the CS pin. In addition, making this change makes it easier to use with shared SPI bus drivers such as those provided by makes it easier to use with shared SPI bus drivers such as those provided by [embedded-hal-bus](https://docs.rs/embedded-hal-bus/latest/embedded_hal_bus/spi/index.html) and [embassy](https://docs.rs/embassy-embedded-hal/latest/embassy_embedded_hal/shared_bus/index.html).
+One final note. I have been doing my development using  [ESP32*](https://github.com/esp-rs/esp-hal) hardware and [embassy](https://github.com/embassy-rs/embassy) experience but I have neither [STM32*](https://github.com/stm32-rs/stm32f4xx-hal) hardware nor [RTIC](https://github.com/rtic-rs/rtic) experience. Therefore, I cannot test the existing example without buying STM32 hardware and learning RTIC. Also, while I love playing new hardware and new software, the project in which I will be using the xpt2046 driver runs on an ESP32-C6 and uses embassy. So, an example the runs on an ESP32 and uses embassy makes the most sense right now. As a result, I will likely remove the STM32+RTIC example when I can no longer get it to compile.
 
 ## Documentation
 
-There is no online documentation at the moment. However, you can generate by checking out the code and running the command
+There is no online documentation at this time. However, you can generate documentation by checking out the code and running the command
 
 > cargo doc --open --no-deps
 
