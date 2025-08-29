@@ -12,32 +12,8 @@ mod app {
         spi::{Mode, Phase, Polarity, Spi},
         timer::Delay,
     };
-    use xpt2046::{self, Xpt2046, Xpt2046Exti};
+    use xpt2046::{self, Xpt2046};
 
-    pub struct MyIrq<const C: char, const N: u8>(Pin<C, N, Input>);
-
-    impl Xpt2046Exti for MyIrq<'A', 2> {
-        type Exti = EXTI;
-        fn clear_interrupt(&mut self) {
-            self.0.clear_interrupt_pending_bit();
-        }
-
-        fn disable_interrupt(&mut self, exti: &mut Self::Exti) {
-            self.0.disable_interrupt(exti);
-        }
-
-        fn enable_interrupt(&mut self, exti: &mut Self::Exti) {
-            self.0.enable_interrupt(exti);
-        }
-
-        fn is_high(&self) -> bool {
-            self.0.is_high()
-        }
-
-        fn is_low(&self) -> bool {
-            self.0.is_low()
-        }
-    }
     type TouchSpi = embedded_hal_bus::spi::ExclusiveDevice<
         Spi<SPI1>,
         Pin<'A', 4, Output>,
@@ -45,7 +21,8 @@ mod app {
     >;
     #[shared]
     struct Shared {
-        xpt_drv: Xpt2046<TouchSpi, MyIrq<'A', 2>>,
+        xpt_drv: Xpt2046<TouchSpi>,
+        touch_irq: Pin<'A', 2, Input>,
         exti: EXTI,
     }
 
@@ -96,16 +73,13 @@ mod app {
             embedded_hal_bus::spi::NoDelay,
         )
         .unwrap();
-        let mut xpt_drv = Xpt2046::new(
-            touch_spi_device,
-            MyIrq(touch_irq),
-            xpt2046::Orientation::PortraitFlipped,
-        );
-        xpt_drv.init(&mut delay).unwrap();
+        let mut xpt_drv = Xpt2046::new(touch_spi_device, xpt2046::Orientation::PortraitFlipped);
+        xpt_drv.init(&mut touch_irq, &mut delay).unwrap();
 
         (
             Shared {
                 xpt_drv,
+                touch_irq,
                 exti: dp.EXTI,
             },
             Local { delay },
@@ -113,15 +87,24 @@ mod app {
         )
     }
 
-    #[idle(local = [delay], shared = [xpt_drv, exti])]
+    #[idle(local = [delay], shared = [xpt_drv, touch_irq, exti])]
     fn idle(ctx: idle::Context) -> ! {
         let mut xpt_drv = ctx.shared.xpt_drv;
+        let mut touch_irq = ctx.shared.touch_irq;
         let mut exti = ctx.shared.exti;
         let delay = ctx.local.delay;
 
         loop {
             xpt_drv.lock(|xpt| {
-                exti.lock(|e| xpt.run(e)).unwrap();
+                touch_irq.lock(|irq| {
+                    xpt.run(irq).unwrap();
+                    if xpt.is_touched() {
+                        exti.lock(|e| {
+                            irq.clear_interrupt_pending_bit();
+                            irq.enable_interrupt(e);
+                        });
+                    }
+                });
                 if xpt.is_touched() {
                     #[cfg(feature = "with_defmt")]
                     {
@@ -134,10 +117,15 @@ mod app {
         }
     }
 
-    #[task(binds = EXTI2, local = [], shared = [xpt_drv, exti])]
+    #[task(binds = EXTI2, local = [], shared = [xpt_drv, touch_irq, exti])]
     fn exti2(ctx: exti2::Context) {
-        let xpt = ctx.shared.xpt_drv;
+        let xpt_drv = ctx.shared.xpt_drv;
+        let touch_irq = ctx.shared.touch_irq;
         let exti = ctx.shared.exti;
-        (xpt, exti).lock(|xpt, exti| xpt.exti_irq_handle(exti))
+        (xpt_drv, touch_irq, exti).lock(|xpt, irq, e| {
+            irq.disable_interrupt(e);
+            irq.clear_interrupt_pending_bit();
+            xpt.clear_touch();
+        })
     }
 }

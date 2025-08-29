@@ -20,21 +20,20 @@
 //!
 
 use crate::calibration::{calculate_calibration, calibration_draw_point};
-pub use crate::{calibration::CalibrationPoint, error::Error, exti_pin::Xpt2046Exti};
+pub use crate::{calibration::CalibrationPoint, error::Error};
 use core::{fmt::Debug, ops::RemAssign};
 use embedded_graphics::{
     draw_target::DrawTarget,
     geometry::Point,
     pixelcolor::{Rgb565, RgbColor},
 };
-use embedded_hal::{delay::DelayNs, spi::SpiDevice};
+use embedded_hal::{delay::DelayNs, digital::InputPin, spi::SpiDevice};
 
 #[cfg(feature = "with_defmt")]
 use defmt::Format;
 
 pub mod calibration;
 pub mod error;
-pub mod exti_pin;
 
 const CHANNEL_SETTING_X: u8 = 0b10010000;
 const CHANNEL_SETTING_Y: u8 = 0b11010000;
@@ -176,11 +175,9 @@ impl TouchSamples {
 }
 
 #[derive(Debug)]
-pub struct Xpt2046<SPI, PinIRQ> {
+pub struct Xpt2046<SPI> {
     /// THe SPI device interface
     spi: SPI,
-    /// Interrupt control pin
-    pub irq: PinIRQ,
     /// Internal buffers tx
     tx_buff: [u8; TX_BUFF_LEN],
     /// Internal buffer for rx
@@ -196,15 +193,13 @@ pub struct Xpt2046<SPI, PinIRQ> {
     calibration_point: CalibrationPoint,
 }
 
-impl<SPI, PinIRQ> Xpt2046<SPI, PinIRQ>
+impl<SPI> Xpt2046<SPI>
 where
     SPI: SpiDevice<u8>,
-    PinIRQ: Xpt2046Exti,
 {
-    pub fn new(spi: SPI, irq: PinIRQ, orientation: Orientation) -> Self {
+    pub fn new(spi: SPI, orientation: Orientation) -> Self {
         Self {
             spi,
-            irq,
             tx_buff: [0; TX_BUFF_LEN],
             rx_buff: [0; TX_BUFF_LEN],
             screen_state: TouchScreenState::IDLE,
@@ -216,21 +211,18 @@ where
     }
 }
 
-impl<SPI, PinIRQ, SPIError> Xpt2046<SPI, PinIRQ>
+impl<SPI, SPIError> Xpt2046<SPI>
 where
     SPI: SpiDevice<u8, Error = SPIError>,
-    PinIRQ: Xpt2046Exti,
     SPIError: Debug,
 {
-    fn spi_read(&mut self) -> Result<(), Error<SPIError>> {
-        self.spi
-            .transfer(&mut self.rx_buff, &self.tx_buff)
-            .map_err(|e| Error::Spi(e))?;
+    fn spi_read(&mut self) -> Result<(), SPIError> {
+        self.spi.transfer(&mut self.rx_buff, &self.tx_buff)?;
         Ok(())
     }
 
     /// Read raw values from the XPT2046 driver
-    fn read_xy(&mut self) -> Result<Point, Error<SPIError>> {
+    fn read_xy(&mut self) -> Result<Point, SPIError> {
         self.spi_read()?;
 
         let x = (self.rx_buff[1] as i32) << 8 | self.rx_buff[2] as i32;
@@ -239,7 +231,7 @@ where
     }
 
     /// Read the calibrated point of touch from XPT2046
-    fn read_touch_point(&mut self) -> Result<Point, Error<SPIError>> {
+    fn read_touch_point(&mut self) -> Result<Point, SPIError> {
         let raw_point = self.read_xy()?;
 
         let (x, y) = match self.operation_mode {
@@ -278,10 +270,22 @@ where
         self.screen_state = TouchScreenState::PRESAMPLING;
     }
 
-    /// Reset the driver and preload tx buffer with register data.
-    pub fn init<D: DelayNs>(&mut self, delay: &mut D) -> Result<(), Error<SPIError>> {
+    /// Reset the driver and preload tx buffer with register data. The unused
+    /// parameter _irq is included aso that IRQError type parameter will be
+    /// accepted, allowing the init, run and calibrate functions to return the
+    /// same error type.
+    pub fn init<IRQ, IRQError, D>(
+        &mut self,
+        _irq: &mut IRQ,
+        delay: &mut D,
+    ) -> Result<(), Error<SPIError, IRQError>>
+    where
+        IRQ: InputPin<Error = IRQError>,
+        D: DelayNs,
+        IRQError: Debug,
+    {
         self.tx_buff[0] = 0x80;
-        self.spi_read()?;
+        self.spi_read().map_err(|e| Error::Spi(e))?;
         delay.delay_ms(1);
 
         /*
@@ -303,19 +307,24 @@ where
     /// Continually runs and and collects the touch data from xpt2046.
     /// You should drive this either in some main loop or dedicated timer
     /// interrupt
-    pub fn run(&mut self, exti: &mut PinIRQ::Exti) -> Result<(), Error<SPIError>> {
+    pub fn run<IRQ, IRQError>(&mut self, irq: &mut IRQ) -> Result<(), Error<SPIError, IRQError>>
+    where
+        IRQ: InputPin<Error = IRQError>,
+        IRQError: Debug,
+    {
         match self.screen_state {
             TouchScreenState::IDLE => {
-                if self.operation_mode == TouchScreenOperationMode::CALIBRATION && self.irq.is_low()
+                if self.operation_mode == TouchScreenOperationMode::CALIBRATION
+                    && irq.is_low().map_err(|e| Error::Irq(e))?
                 {
                     self.screen_state = TouchScreenState::PRESAMPLING;
                 }
             }
             TouchScreenState::PRESAMPLING => {
-                if self.irq.is_high() {
+                if irq.is_high().map_err(|e| Error::Irq(e))? {
                     self.screen_state = TouchScreenState::RELEASED
                 }
-                let point_sample = self.read_touch_point()?;
+                let point_sample = self.read_touch_point().map_err(|e| Error::Spi(e))?;
                 self.ts.samples[self.ts.counter] = point_sample;
                 self.ts.counter += 1;
                 if self.ts.counter + 1 == MAX_SAMPLES {
@@ -324,7 +333,7 @@ where
                 }
             }
             TouchScreenState::TOUCHED => {
-                let point_sample = self.read_touch_point()?;
+                let point_sample = self.read_touch_point().map_err(|e| Error::Spi(e))?;
                 self.ts.samples[self.ts.counter] = point_sample;
                 self.ts.counter += 1;
                 /*
@@ -332,40 +341,16 @@ where
                  * is touched for longer time
                  */
                 self.ts.counter.rem_assign(MAX_SAMPLES - 1);
-                if self.irq.is_high() {
+                if irq.is_high().map_err(|e| Error::Irq(e))? {
                     self.screen_state = TouchScreenState::RELEASED
                 }
             }
             TouchScreenState::RELEASED => {
                 self.screen_state = TouchScreenState::IDLE;
                 self.ts.counter = 0;
-                /*
-                 * The PENIRQ should be re-enabled in here
-                 * as we finished sending any data to the touch controller
-                 */
-                self.irq.clear_interrupt();
-                self.irq.enable_interrupt(exti);
             }
         }
         Ok(())
-    }
-
-    /// This function should be only ever be called in an EXTI
-    /// interrupt handler.
-    pub fn exti_irq_handle(&mut self, exti: &mut PinIRQ::Exti) {
-        /*
-         * Disable the PENIRQ so that it wont be false triggering our handler
-         * as per XPT2046 Touch Screen Controller datasheet page 25
-         *
-         * It is recommended that the processor mask the interrupt PENIRQ
-         * is associated with whenever the processor sends
-         * a control byte to the XPT2046. This prevents false triggering of
-         * interrupts when the PENIRQ output is disabled in the cases
-         * discussed in this section.
-         */
-        self.irq.disable_interrupt(exti);
-        self.irq.clear_interrupt();
-        self.screen_state = TouchScreenState::PRESAMPLING;
     }
 
     /// Collects the reading for 3 sample points and
@@ -373,13 +358,15 @@ where
     /// to work ok but if for some reason touch screen needs to be recalibrated
     /// then look no further.
     /// This should be run after init() method.
-    pub fn calibrate<DT, DELAY>(
+    pub fn calibrate<IRQ, IRQError, DT, DELAY>(
         &mut self,
+        irq: &mut IRQ,
         dt: &mut DT,
         delay: &mut DELAY,
-        exti: &mut PinIRQ::Exti,
-    ) -> Result<(), Error<SPIError>>
+    ) -> Result<(), Error<SPIError, IRQError>>
     where
+        IRQ: InputPin<Error = IRQError>,
+        IRQError: Debug,
         DT: DrawTarget<Color = Rgb565>,
         DELAY: DelayNs,
     {
@@ -396,7 +383,7 @@ where
         self.operation_mode = TouchScreenOperationMode::CALIBRATION;
         while calibration_count < 4 {
             // We must run our state machine to capture user input
-            self.run(exti)?;
+            self.run(irq)?;
             match calibration_count {
                 0 => {
                     calibration_draw_point(dt, &old_cp.a);

@@ -61,25 +61,6 @@ macro_rules! make_static {
     }};
 }
 
-pub struct MyIrq<'a>(esp_hal::gpio::Input<'a>);
-
-impl<'a> xpt2046::Xpt2046Exti for MyIrq<'a> {
-    type Exti = bool;
-    fn clear_interrupt(&mut self) {}
-
-    fn disable_interrupt(&mut self, _exti: &mut Self::Exti) {}
-
-    fn enable_interrupt(&mut self, _exti: &mut Self::Exti) {}
-
-    fn is_high(&self) -> bool {
-        self.0.is_high()
-    }
-
-    fn is_low(&self) -> bool {
-        self.0.is_low()
-    }
-}
-
 esp_bootloader_esp_idf::esp_app_desc!();
 
 #[esp_hal_embassy::main]
@@ -173,26 +154,21 @@ async fn touch_task(
         .with_frequency(esp_hal::time::Rate::from_mhz(2));
     let touch_spi_device = SpiDeviceWithConfig::new(spi_bus, touch_cs, touch_spi_config);
 
-    let touch_irq: esp_hal::gpio::Input<'_> = esp_hal::gpio::Input::new(
+    let mut touch_irq: esp_hal::gpio::Input<'_> = esp_hal::gpio::Input::new(
         touch_irq,
         esp_hal::gpio::InputConfig::default().with_pull(esp_hal::gpio::Pull::Up),
     );
 
-    let mut touch = xpt2046::Xpt2046::new(
-        touch_spi_device,
-        MyIrq(touch_irq),
-        xpt2046::Orientation::Portrait,
-    );
+    let mut touch = xpt2046::Xpt2046::new(touch_spi_device, xpt2046::Orientation::Portrait);
 
     let mut delay = Delay;
-    let mut exti = true;
 
-    touch.init(&mut delay).unwrap();
+    touch.init(&mut touch_irq, &mut delay).unwrap();
     touch.clear_touch();
     loop {
-        touch.irq.0.wait_for_low().await;
-        while touch.irq.0.is_low() {
-            touch.run(&mut exti).unwrap();
+        touch_irq.wait_for_low().await;
+        while touch_irq.is_low() {
+            touch.run(&mut touch_irq).unwrap();
             if touch.is_touched() {
                 let point = touch.get_touch_point();
                 if point.x >= 0 && point.x < 240 && point.y >= 0 && point.y < 320 {

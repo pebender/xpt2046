@@ -12,22 +12,22 @@ pub enum CalibrationError {
 }
 
 #[derive(Debug)]
-pub enum Error<E> {
+pub enum Error<SPIError, IRQError> {
     /// SPI error
-    Spi(E),
+    Spi(SPIError),
+    /// IRQ error
+    Irq(IRQError),
     /// Error when calculating new calibration values
     Calibration(CalibrationError),
-    /// Delay error
-    Delay,
 }
 
 #[cfg(feature = "with_defmt")]
-impl<E> Format for Error<E> {
+impl<SPIError, IRQError> Format for Error<SPIError, IRQError> {
     fn format(&self, fmt: Formatter) {
         match self {
             Error::Spi(_) => write!(fmt, "SPI error"),
+            Error::Irq(_) => write!(fmt, "IRQ error"),
             Error::Calibration(e) => write!(fmt, "Error when calculating calibration for: {}", e),
-            Error::Delay => write!(fmt, "Delay error"),
         }
     }
 }
