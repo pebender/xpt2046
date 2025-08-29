@@ -1,7 +1,9 @@
+#![deny(unsafe_code)]
+#![deny(warnings)]
 #![no_main]
 #![no_std]
 
-use panic_semihosting as _;
+use panic_halt as _;
 
 #[rtic::app(device = stm32f4xx_hal::pac)]
 mod app {
@@ -32,7 +34,7 @@ mod app {
     }
 
     #[init]
-    fn init(ctx: init::Context) -> (Shared, Local, init::Monotonics) {
+    fn init(ctx: init::Context) -> (Shared, Local) {
         let mut dp = ctx.device;
         let _cp = ctx.core;
 
@@ -83,7 +85,6 @@ mod app {
                 exti: dp.EXTI,
             },
             Local { delay },
-            init::Monotonics(),
         )
     }
 
@@ -117,7 +118,7 @@ mod app {
         }
     }
 
-    #[task(binds = EXTI2, local = [], shared = [xpt_drv, touch_irq, exti])]
+    #[task(binds = EXTI2, shared = [xpt_drv, touch_irq, exti])]
     fn exti2(ctx: exti2::Context) {
         let xpt_drv = ctx.shared.xpt_drv;
         let touch_irq = ctx.shared.touch_irq;
