@@ -22,12 +22,28 @@ use embassy_time::{Delay, Timer};
 
 use embedded_graphics::prelude::*;
 
+#[cfg(feature = "defmt")]
+use defmt::Format;
+
+#[cfg(feature = "log")]
+use esp_println::logger::init_logger_from_env;
+
+#[cfg(feature = "defmt")]
+#[allow(unused_imports)]
+use defmt::{debug, error, info, trace, warn};
+
+#[cfg(feature = "log")]
+#[allow(unused_imports)]
+use log::{debug, error, info, trace, warn};
+
 use esp_hal::peripherals::{
     GPIO16 as GPIO_LCD_CS, GPIO17 as GPIO_TOUCH_CS, GPIO18 as GPIO_TOUCH_IRQ,
     GPIO2 as GPIO_SPI_MISO, GPIO20 as GPIO_LCD_BACKLIGHT, GPIO21 as GPIO_LCD_RESET,
     GPIO22 as GPIO_LCD_DC, GPIO6 as GPIO_SPI_SCLK, GPIO7 as GPIO_SPI_MOSI, SPI2 as SPI_BUS,
 };
 
+#[cfg_attr(feature = "defmt", derive(Format))]
+#[derive(Debug)]
 struct PeripheralMap<'a> {
     pub spi: SPI_BUS<'a>,
     pub spi_sclk: GPIO_SPI_SCLK<'a>,
@@ -41,6 +57,8 @@ struct PeripheralMap<'a> {
     pub touch_irq: GPIO_TOUCH_IRQ<'a>,
 }
 
+#[cfg_attr(feature = "defmt", derive(Format))]
+#[derive(Debug)]
 enum LcdCommand {
     Clear,
     TouchPoint(embedded_graphics::geometry::Point),
@@ -67,6 +85,9 @@ esp_bootloader_esp_idf::esp_app_desc!();
 
 #[esp_hal_embassy::main]
 async fn main(spawner: Spawner) -> ! {
+    #[cfg(feature = "log")]
+    init_logger_from_env();
+
     let config = esp_hal::Config::default().with_cpu_clock(esp_hal::clock::CpuClock::max());
     let peripherals = esp_hal::init(config);
 

@@ -8,9 +8,10 @@ use embedded_graphics::{
     Drawable,
 };
 
-#[cfg(feature = "with_defmt")]
-use defmt::{write, Format, Formatter};
+#[cfg(feature = "defmt")]
+use defmt::Format;
 
+#[cfg_attr(feature = "defmt", derive(Format))]
 #[derive(Debug, Clone)]
 pub struct CalibrationPoint {
     pub a: Point,
@@ -22,17 +23,6 @@ impl CalibrationPoint {
     pub fn delta(&self) -> i32 {
         (self.a[0] - self.c[0]) * (self.b[1] - self.c[1])
             - (self.b[0] - self.c[0]) * (self.a[1] - self.c[1])
-    }
-}
-
-#[cfg(feature = "with_defmt")]
-impl Format for CalibrationPoint {
-    fn format(&self, fmt: Formatter) {
-        write!(
-            fmt,
-            "a[x: {} y:{}]\nb[x: {} y: {}]\nc[x:{} y:{}]",
-            self.a.x, self.a.y, self.b.x, self.b.y, self.c.x, self.c.y,
-        )
     }
 }
 

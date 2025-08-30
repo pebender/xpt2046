@@ -14,12 +14,36 @@ repository = "https://github.com/pebender/xpt2046"
 name = "xpt2046"
 
 [features]
-with_defmt = ["defmt"]
+default = ["defmt"]
+off = ["log", "log/max_level_off"]
+defmt = [
+    "dep:defmt",
+    "embassy-embedded-hal/defmt",
+    "embassy-executor/defmt",
+    "embassy-sync/defmt",
+    "embassy-time/defmt",
+    "embedded-graphics/defmt",
+    "embedded-hal/defmt-03",
+    "embedded-hal-bus/defmt-03",
+    "esp-bootloader-esp-idf/defmt",
+    "esp-hal/defmt",
+    "esp-hal-embassy/defmt",
+    "esp-println/defmt-espflash",
+    "stm32f4xx-hal/defmt",
+]
+log = [
+    "dep:log",
+    "esp-bootloader-esp-idf/log-04",
+    "esp-hal/log-04",
+    "esp-hal-embassy/log-04",
+    "esp-println/log-04",
+]
 
 [dependencies]
 defmt = { version = "1.0.1", optional = true }
 embedded-graphics = { version = "0.8.1" }
 embedded-hal = { version = "1.0.0" }
+log = { version = "0.4.27", default-features = false, optional = true }
 
 [target.riscv32imac-unknown-none-elf.dev-dependencies]
 # esp-hal 1.0.0-rc.0 depends on embassy-embedded-hal 0.3.x/0.4.0.
@@ -32,10 +56,10 @@ embassy-sync = { version = "0.7.2" }
 embassy-time = { version = "0.5.0" }
 embedded-graphics = { version = "0.8.1" }
 esp-backtrace = { version = "0.17.0", features = ["esp32c6", "println", "panic-handler", "exception-handler"] }
-esp-bootloader-esp-idf = { version = "0.2.0", features = ["esp32c6", "log-04"] }
-esp-hal = { version = "=1.0.0-rc.0", features = ["esp32c6", "log-04", "unstable"] }
-esp-hal-embassy = { version = "0.9.0", features = ["esp32c6", "log-04"] }
-esp-println = { version = "0.15.0", features = ["esp32c6", "log-04"] }
+esp-bootloader-esp-idf = { version = "0.2.0", features = ["esp32c6"] }
+esp-hal = { version = "=1.0.0-rc.0", features = ["esp32c6", "unstable"] }
+esp-hal-embassy = { version = "0.9.0", features = ["esp32c6"] }
+esp-println = { version = "0.15.0", features = ["esp32c6", "auto"] }
 mipidsi = { version = "0.9.0" }
 static_cell = { version = "2.1.1" }
 

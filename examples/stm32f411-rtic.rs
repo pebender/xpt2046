@@ -107,7 +107,7 @@ mod app {
                     }
                 });
                 if xpt.is_touched() {
-                    #[cfg(feature = "with_defmt")]
+                    #[cfg(feature = "defmt")]
                     {
                         let p = xpt.get_touch_point();
                         defmt::println!("x:{} y:{}", p.x, p.y);

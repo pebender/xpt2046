@@ -29,7 +29,7 @@ use embedded_graphics::{
 };
 use embedded_hal::{delay::DelayNs, digital::InputPin, spi::SpiDevice};
 
-#[cfg(feature = "with_defmt")]
+#[cfg(feature = "defmt")]
 use defmt::Format;
 
 pub mod calibration;
@@ -41,7 +41,7 @@ const CHANNEL_SETTING_Y: u8 = 0b11010000;
 const MAX_SAMPLES: usize = 128;
 const TX_BUFF_LEN: usize = 5;
 
-#[cfg_attr(feature = "with_defmt", derive(Format))]
+#[cfg_attr(feature = "defmt", derive(Format))]
 #[derive(Debug)]
 pub struct CalibrationData {
     pub alpha_x: f32,
@@ -53,6 +53,7 @@ pub struct CalibrationData {
 }
 
 /// Orientation of the touch screen
+#[cfg_attr(feature = "defmt", derive(Format))]
 #[derive(Debug)]
 pub enum Orientation {
     Portrait,
@@ -122,7 +123,8 @@ impl Orientation {
 }
 
 /// Current state of the driver
-#[derive(PartialEq, Debug)]
+#[cfg_attr(feature = "defmt", derive(Format))]
+#[derive(Debug, PartialEq)]
 pub enum TouchScreenState {
     /// Driver waits for touch
     IDLE,
@@ -134,6 +136,7 @@ pub enum TouchScreenState {
     RELEASED,
 }
 
+#[cfg_attr(feature = "defmt", derive(Format))]
 #[derive(Debug, PartialEq)]
 pub enum TouchScreenOperationMode {
     /// Normal touch reading
@@ -142,6 +145,7 @@ pub enum TouchScreenOperationMode {
     CALIBRATION,
 }
 
+#[cfg_attr(feature = "defmt", derive(Format))]
 #[derive(Debug)]
 pub struct TouchSamples {
     /// All the touch samples
@@ -174,6 +178,7 @@ impl TouchSamples {
     }
 }
 
+#[cfg_attr(feature = "defmt", derive(Format))]
 #[derive(Debug)]
 pub struct Xpt2046<SPI> {
     /// THe SPI device interface
