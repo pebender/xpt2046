@@ -23,9 +23,9 @@ mod app {
     >;
     #[shared]
     struct Shared {
-        xpt_drv: Xpt2046<TouchSpi>,
+        touch_drv: Xpt2046<TouchSpi>,
         touch_irq: Pin<'A', 2, Input>,
-        exti: EXTI,
+        touch_exti: EXTI,
     }
 
     #[local]
@@ -35,81 +35,95 @@ mod app {
 
     #[init]
     fn init(ctx: init::Context) -> (Shared, Local) {
-        let mut dp = ctx.device;
-        let _cp = ctx.core;
+        let device_peripherals = ctx.device;
 
-        let rcc = dp.RCC.constrain();
+        let rcc = device_peripherals.RCC.constrain();
         let clocks = rcc.cfgr.use_hse(25.MHz()).sysclk(100.MHz()).freeze();
 
-        let gpioa = dp.GPIOA.split();
-        let _gpiob = dp.GPIOB.split();
-        let _gpioc = dp.GPIOC.split();
+        let mut delay = device_peripherals.TIM1.delay_us(&clocks);
 
-        let mode = Mode {
+        // Pins in GPIO Port A.
+        let gpioa = device_peripherals.GPIOA.split();
+
+        let spi = device_peripherals.SPI1;
+        let spi_sclk = gpioa.pa5;
+        let spi_miso = gpioa.pa6;
+        let spi_mosi = gpioa.pa7;
+        let touch_cs = gpioa.pa4;
+        let touch_irq = gpioa.pa2;
+        let touch_exti = device_peripherals.EXTI;
+
+        // Set up SPI bus.
+        let spi_sclk = spi_sclk.into_alternate();
+        let spi_miso = spi_miso.into_alternate();
+        let spi_mosi = spi_mosi.into_alternate().internal_pull_up(true);
+        let spi_mode = Mode {
             polarity: Polarity::IdleLow,
             phase: Phase::CaptureOnFirstTransition,
         };
-        let mut delay = dp.TIM1.delay_us(&clocks);
-
-        // Touch interface
-        let mut touch_irq = gpioa.pa2.into_pull_up_input();
-        let mut syscfg = dp.SYSCFG.constrain();
-        touch_irq.make_interrupt_source(&mut syscfg);
-        touch_irq.trigger_on_edge(&mut dp.EXTI, Edge::Falling);
-        touch_irq.enable_interrupt(&mut dp.EXTI);
-        let touch_cs = gpioa.pa4.into_push_pull_output();
-        let touch_clk = gpioa.pa5.into_alternate();
-        let touch_mosi = gpioa.pa7.into_alternate().internal_pull_up(true);
-        let touch_miso = gpioa.pa6.into_alternate();
         let spi = Spi::new(
-            dp.SPI1,
-            (touch_clk, touch_miso, touch_mosi),
-            mode,
+            spi,
+            (spi_sclk, spi_miso, spi_mosi),
+            spi_mode,
             2.MHz(),
             &clocks,
         );
         let spi_bus = spi;
+
+        // Set up touch SPI device.
+        let touch_cs = touch_cs.into_push_pull_output();
         let touch_spi_device = embedded_hal_bus::spi::ExclusiveDevice::new(
             spi_bus,
             touch_cs,
             embedded_hal_bus::spi::NoDelay,
         )
         .unwrap();
-        let mut xpt_drv = Xpt2046::new(touch_spi_device, xpt2046::Orientation::PortraitFlipped);
-        xpt_drv.init(&mut touch_irq, &mut delay).unwrap();
+
+        // Set up touch PENIRQ, including interrupt handler.
+        let mut touch_irq = touch_irq.into_pull_up_input();
+        let mut touch_exti = touch_exti;
+        let mut syscfg = device_peripherals.SYSCFG.constrain();
+        touch_irq.make_interrupt_source(&mut syscfg);
+        touch_irq.trigger_on_edge(&mut touch_exti, Edge::Falling);
+        touch_irq.enable_interrupt(&mut touch_exti);
+
+        // Set up touch driver.
+        let mut touch_drv = Xpt2046::new(touch_spi_device, xpt2046::Orientation::PortraitFlipped);
+        touch_drv.init(&mut touch_irq, &mut delay).unwrap();
+        touch_drv.clear_touch();
 
         (
             Shared {
-                xpt_drv,
+                touch_drv,
                 touch_irq,
-                exti: dp.EXTI,
+                touch_exti,
             },
             Local { delay },
         )
     }
 
-    #[idle(local = [delay], shared = [xpt_drv, touch_irq, exti])]
+    #[idle(local = [delay], shared = [touch_drv, touch_irq, touch_exti])]
     fn idle(ctx: idle::Context) -> ! {
-        let mut xpt_drv = ctx.shared.xpt_drv;
+        let mut touch_drv = ctx.shared.touch_drv;
         let mut touch_irq = ctx.shared.touch_irq;
-        let mut exti = ctx.shared.exti;
+        let mut touch_exti = ctx.shared.touch_exti;
         let delay = ctx.local.delay;
 
         loop {
-            xpt_drv.lock(|xpt| {
+            touch_drv.lock(|drv| {
                 touch_irq.lock(|irq| {
-                    xpt.run(irq).unwrap();
-                    if xpt.is_touched() {
-                        exti.lock(|e| {
+                    drv.run(irq).unwrap();
+                    if drv.is_touched() {
+                        touch_exti.lock(|exti| {
                             irq.clear_interrupt_pending_bit();
-                            irq.enable_interrupt(e);
+                            irq.enable_interrupt(exti);
                         });
                     }
                 });
-                if xpt.is_touched() {
+                if drv.is_touched() {
                     #[cfg(feature = "defmt")]
                     {
-                        let p = xpt.get_touch_point();
+                        let p = drv.get_touch_point();
                         defmt::println!("x:{} y:{}", p.x, p.y);
                     }
                 }
@@ -118,15 +132,15 @@ mod app {
         }
     }
 
-    #[task(binds = EXTI2, shared = [xpt_drv, touch_irq, exti])]
+    #[task(binds = EXTI2, shared = [touch_drv, touch_irq, touch_exti])]
     fn exti2(ctx: exti2::Context) {
-        let xpt_drv = ctx.shared.xpt_drv;
+        let touch_drv = ctx.shared.touch_drv;
         let touch_irq = ctx.shared.touch_irq;
-        let exti = ctx.shared.exti;
-        (xpt_drv, touch_irq, exti).lock(|xpt, irq, e| {
-            irq.disable_interrupt(e);
+        let touch_exti = ctx.shared.touch_exti;
+        (touch_drv, touch_irq, touch_exti).lock(|drv, irq, exti| {
+            irq.disable_interrupt(exti);
             irq.clear_interrupt_pending_bit();
-            xpt.clear_touch();
+            drv.clear_touch();
         })
     }
 }
