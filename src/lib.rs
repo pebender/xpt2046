@@ -21,7 +21,7 @@
 
 use crate::calibration::{calculate_calibration, calibration_draw_point};
 pub use crate::{calibration::CalibrationPoint, error::Error};
-use core::{fmt::Debug, ops::RemAssign};
+use core::fmt::Debug;
 use embedded_graphics::{
     draw_target::DrawTarget,
     geometry::Point,
@@ -365,7 +365,7 @@ where
                 let point_sample = self.read_touch_point().map_err(|e| Error::Spi(e))?;
                 self.ts.samples[self.ts.counter] = point_sample;
                 self.ts.counter += 1;
-                if self.ts.counter + 1 == MAX_SAMPLES {
+                if self.ts.counter == MAX_SAMPLES {
                     self.ts.counter = 0;
                     self.screen_state = TouchScreenState::TOUCHED;
                 }
@@ -378,7 +378,7 @@ where
                  * Wrap around the counter if the screen
                  * is touched for longer time
                  */
-                self.ts.counter.rem_assign(MAX_SAMPLES - 1);
+                self.ts.counter %= MAX_SAMPLES;
                 if irq.is_high().map_err(|e| Error::Irq(e))? {
                     self.screen_state = TouchScreenState::RELEASED
                 }
