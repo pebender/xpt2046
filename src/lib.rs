@@ -35,11 +35,69 @@ use defmt::Format;
 pub mod calibration;
 pub mod error;
 
-const CHANNEL_SETTING_X: u8 = 0b10010000;
-const CHANNEL_SETTING_Y: u8 = 0b11010000;
+// For information on the operation of the XPT2046, refer to the XPT2046 data
+// sheet <https://www.snapeda.com/parts/XPT2046/Xptek/datasheet/>. The format of
+// the XPT2046 Control Byte is shown in Table 6. Per Table 6 and Table 7, it
+// consists of 1 start bit, 3 channel select bits, 1 mode bit, 1
+// single-ended/differential select bit, and 2 power down mode select bits.
+//
+// The values of READ_X_CONTROL_BYTE and READ_Y_CONTROL_BYTE have been
+// selected
+// - to enable the XPT2046 the most accurate measurements of the X and Y
+//   positions,
+// - to enable repeated, uninterrupted sequential measurements of the X and Y
+//   positions, and
+// - to enable the PENIRQ signal.
+//
+// The start bit is set to '1' to signal the start of the byte over the SPI's
+// output serial line (MOSI). Per Table 5, a channel select value of '001' tells
+// the XPT2046 to measure the X-channel whereas a channel select value of '101'
+// tells the XPT2046 to measure the Y-channel. A single-ended/differential
+// select value of '0' tells the XPT2046 to make the more accurate differential
+// measurement. A mode select value of '0' tells the XPT2046 ADC to produce the
+// higher resolution 12-bit sample as send it over the SPI's input serial line
+// (MISO). Per Table 8, a power down value of '00' tells the XPT2046 ADC power
+// down but keep the PENIRQ active and be ready to make the next measurement
+// after the current measurement is complete.
+//
+// Figure 14 shows that a new measurement can be made every 16 clock cycles on
+// the byte oriented SPI interface. In addition, it shows that it takes an
+// additional 5 clock cycles beyond the 16 clock cycles to receive the remaining
+// 5 bits of final measurement. Therefore, an X,Y measurement can be made with 5
+// bytes.
+//
+// The start of a measurement is tied to the start of the Control Byte that
+// initiated the measurement. By shifting the position of the Control Byte in
+// the SPI transmit bytes, the position of the measurement in SPI receive bytes
+// can be changed. Because fo the timing between the start of the Control Byte
+// and the end of the measurement, if the Control Byte is aligned with the SPI
+// transmit bytes, then the measurement in the SPI receive bytes will be
+// misaligned by 3 bits. Essentially, it will be as if the measurement was 15
+// bits rather than 12 bits where the low 3 bits are always 0. So, we would
+// either need to divide the measurement by 2^3 or lose 3 bits of headroom.
+
+// However, delaying the Control Byte by 3 bits in the SPI transmit bytes
+// changes the alignment of the measurement in the SPI receive bytes so that the
+// measurement is aligned with the SPI receive bytes, eliminating the need to
+// divide the  measurement by 2^3 or lose 3 bits of headroom. So, that is what
+// we do.
+const READ_X_CONTROL_BYTE: u8 = 0b1_001_0_0_00;
+const READ_Y_CONTROL_BYTE: u8 = 0b1_101_0_0_00;
+
+const READ_X_SPI_TX_BUF: [u8; 2] = ((READ_X_CONTROL_BYTE as u16) << 5).to_be_bytes();
+const READ_Y_SPI_TX_BUF: [u8; 2] = ((READ_Y_CONTROL_BYTE as u16) << 5).to_be_bytes();
+
+const READ_XY_SPI_BUF_LEN: usize = 5;
+
+const READ_XY_SPI_TX_BUF: [u8; READ_XY_SPI_BUF_LEN] = [
+    READ_X_SPI_TX_BUF[0],
+    READ_X_SPI_TX_BUF[1],
+    READ_Y_SPI_TX_BUF[0],
+    READ_Y_SPI_TX_BUF[1],
+    0,
+];
 
 const MAX_SAMPLES: usize = 128;
-const TX_BUFF_LEN: usize = 5;
 
 #[cfg_attr(feature = "defmt", derive(Format))]
 #[derive(Debug)]
@@ -183,10 +241,6 @@ impl TouchSamples {
 pub struct Xpt2046<SPI> {
     /// THe SPI device interface
     spi: SPI,
-    /// Internal buffers tx
-    tx_buff: [u8; TX_BUFF_LEN],
-    /// Internal buffer for rx
-    rx_buff: [u8; TX_BUFF_LEN],
     /// Current driver state
     screen_state: TouchScreenState,
     /// Buffer for the touch data samples
@@ -205,8 +259,6 @@ where
     pub fn new(spi: SPI, orientation: Orientation) -> Self {
         Self {
             spi,
-            tx_buff: [0; TX_BUFF_LEN],
-            rx_buff: [0; TX_BUFF_LEN],
             screen_state: TouchScreenState::IDLE,
             ts: TouchSamples::default(),
             calibration_data: orientation.calibration_data(),
@@ -221,17 +273,16 @@ where
     SPI: SpiDevice<u8, Error = SPIError>,
     SPIError: Debug,
 {
-    fn spi_read(&mut self) -> Result<(), SPIError> {
-        self.spi.transfer(&mut self.rx_buff, &self.tx_buff)?;
-        Ok(())
-    }
-
-    /// Read raw values from the XPT2046 driver
+    /// Read raw X,Y values.
     fn read_xy(&mut self) -> Result<Point, SPIError> {
-        self.spi_read()?;
+        let mut read_xy_spi_rx_buf = [0; READ_XY_SPI_BUF_LEN];
 
-        let x = (self.rx_buff[1] as i32) << 8 | self.rx_buff[2] as i32;
-        let y = (self.rx_buff[3] as i32) << 8 | self.rx_buff[4] as i32;
+        self.spi
+            .transfer(&mut read_xy_spi_rx_buf, &READ_XY_SPI_TX_BUF)?;
+
+        let x: i32 = u16::from_be_bytes([read_xy_spi_rx_buf[1], read_xy_spi_rx_buf[2]]) as i32;
+        let y: i32 = u16::from_be_bytes([read_xy_spi_rx_buf[3], read_xy_spi_rx_buf[4]]) as i32;
+
         Ok(Point::new(x, y))
     }
 
@@ -279,33 +330,15 @@ where
     /// parameter _irq is included aso that IRQError type parameter will be
     /// accepted, allowing the init, run and calibrate functions to return the
     /// same error type.
-    pub fn init<IRQ, IRQError, D>(
-        &mut self,
-        _irq: &mut IRQ,
-        delay: &mut D,
-    ) -> Result<(), Error<SPIError, IRQError>>
+    pub fn init<IRQ, IRQError>(&mut self, _irq: &mut IRQ) -> Result<(), Error<SPIError, IRQError>>
     where
         IRQ: InputPin<Error = IRQError>,
-        D: DelayNs,
         IRQError: Debug,
     {
-        self.tx_buff[0] = 0x80;
-        self.spi_read().map_err(|e| Error::Spi(e))?;
-        delay.delay_ms(1);
+        // Make a throwaway X,Y measurement to make sure that the Power Down Select Mode
+        // bits are in the correct state to enable PENIRQ.
+        _ = self.read_xy().map_err(|e| Error::Spi(e))?;
 
-        /*
-         * Load the tx_buffer with the channels config
-         * for all subsequent reads
-         * The byte shifting provides padding to align the read bytes with the
-         * DCLK. XPT2046 datasheet figure 12
-         */
-        self.tx_buff = [
-            CHANNEL_SETTING_X >> 3,
-            CHANNEL_SETTING_X << 5,
-            CHANNEL_SETTING_Y >> 3,
-            CHANNEL_SETTING_Y << 5,
-            0,
-        ];
         Ok(())
     }
 

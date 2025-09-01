@@ -40,7 +40,7 @@ mod app {
         let rcc = device_peripherals.RCC.constrain();
         let clocks = rcc.cfgr.use_hse(25.MHz()).sysclk(100.MHz()).freeze();
 
-        let mut delay = device_peripherals.TIM1.delay_us(&clocks);
+        let delay = device_peripherals.TIM1.delay_us(&clocks);
 
         // Pins in GPIO Port A.
         let gpioa = device_peripherals.GPIOA.split();
@@ -89,7 +89,7 @@ mod app {
 
         // Set up touch driver.
         let mut touch_drv = Xpt2046::new(touch_spi_device, xpt2046::Orientation::PortraitFlipped);
-        touch_drv.init(&mut touch_irq, &mut delay).unwrap();
+        touch_drv.init(&mut touch_irq).unwrap();
         touch_drv.clear_touch();
 
         (

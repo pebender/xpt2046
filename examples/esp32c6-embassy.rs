@@ -184,9 +184,7 @@ async fn touch_task(
 
     let mut touch = xpt2046::Xpt2046::new(touch_spi_device, xpt2046::Orientation::Portrait);
 
-    let mut delay = Delay;
-
-    touch.init(&mut touch_irq, &mut delay).unwrap();
+    touch.init(&mut touch_irq).unwrap();
     touch.clear_touch();
     loop {
         touch_irq.wait_for_low().await;

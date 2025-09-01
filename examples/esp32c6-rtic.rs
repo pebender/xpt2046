@@ -66,7 +66,7 @@ mod app {
 
         // Set up touch device.
         let mut touch_drv = Xpt2046::new(touch_spi_device, xpt2046::Orientation::PortraitFlipped);
-        touch_drv.init(&mut touch_irq, &mut Delay::new()).unwrap();
+        touch_drv.init(&mut touch_irq).unwrap();
         touch_drv.clear_touch();
 
         (
