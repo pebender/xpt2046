@@ -177,7 +177,7 @@ async fn touch_task(
         .with_frequency(esp_hal::time::Rate::from_mhz(2));
     let touch_spi_device = SpiDeviceWithConfig::new(spi_bus, touch_cs, touch_spi_config);
 
-    let mut touch_irq: esp_hal::gpio::Input<'_> = esp_hal::gpio::Input::new(
+    let mut touch_irq = esp_hal::gpio::Input::new(
         touch_irq,
         esp_hal::gpio::InputConfig::default().with_pull(esp_hal::gpio::Pull::Up),
     );
@@ -196,8 +196,9 @@ async fn touch_task(
                     lcd_command_sender.send(LcdCommand::TouchPoint(point)).await;
                 }
             }
-            touch.clear_touch();
+            Timer::after_micros(500).await;
         }
+        touch.clear_touch();
     }
 }
 
