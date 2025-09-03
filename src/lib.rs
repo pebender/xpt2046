@@ -81,8 +81,8 @@ pub mod error;
 // measurement is aligned with the SPI receive bytes, eliminating the need to
 // divide the  measurement by 2^3 or lose 3 bits of headroom. So, that is what
 // we do.
-const READ_X_CONTROL_BYTE: u8 = 0b1_001_0_0_00;
-const READ_Y_CONTROL_BYTE: u8 = 0b1_101_0_0_00;
+const READ_X_CONTROL_BYTE: u8 = 0b1_101_0_0_00;
+const READ_Y_CONTROL_BYTE: u8 = 0b1_001_0_0_00;
 
 const READ_X_SPI_TX_BUF: [u8; 2] = ((READ_X_CONTROL_BYTE as u16) << 5).to_be_bytes();
 const READ_Y_SPI_TX_BUF: [u8; 2] = ((READ_Y_CONTROL_BYTE as u16) << 5).to_be_bytes();
@@ -145,35 +145,38 @@ impl Orientation {
     pub fn calibration_data(&self) -> CalibrationData {
         match self {
             Orientation::Portrait => CalibrationData {
-                alpha_x: -0.0009337,
-                beta_x: -0.0636839,
+                alpha_x: -0.0636839,
+                beta_x: -0.0009337,
                 delta_x: 250.342,
-                alpha_y: -0.0889775,
-                beta_y: -0.00118110,
+                alpha_y: -0.00118110,
+                beta_y: -0.0889775,
                 delta_y: 356.538,
             },
+            // normal X and normal Y
             Orientation::PortraitFlipped => CalibrationData {
-                alpha_x: 0.0006100,
-                beta_x: 0.0647828,
+                alpha_x: 0.0647828,
+                beta_x: 0.0006100,
                 delta_x: -13.634,
-                alpha_y: 0.0890609,
-                beta_y: 0.0001381,
+                alpha_y: 0.0001381,
+                beta_y: 0.0890609,
                 delta_y: -35.73,
             },
+            // rotate 90 degrees.
             Orientation::Landscape => CalibrationData {
-                alpha_x: -0.0885542,
-                beta_x: 0.0016532,
+                alpha_x: 0.0016532,
+                beta_x: -0.0885542,
                 delta_x: 349.800,
-                alpha_y: 0.0007309,
-                beta_y: 0.06543699,
+                alpha_y: 0.06543699,
+                beta_y: 0.0007309,
                 delta_y: -15.290,
             },
+            // rotate 90 degrees.
             Orientation::LandscapeFlipped => CalibrationData {
-                alpha_x: 0.0902216,
-                beta_x: 0.0006510,
+                alpha_x: 0.0006510,
+                beta_x: 0.0902216,
                 delta_x: -38.657,
-                alpha_y: -0.0010005,
-                beta_y: -0.0667030,
+                alpha_y: -0.0667030,
+                beta_y: -0.0010005,
                 delta_y: 258.08,
             },
         }
