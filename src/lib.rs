@@ -291,32 +291,29 @@ where
 
     /// Read the calibrated point of touch from XPT2046
     fn read_touch_point(&mut self) -> Result<Point, SPIError> {
-        let raw_point = self.read_xy()?;
-
-        let (x, y) = match self.operation_mode {
-            TouchScreenOperationMode::NORMAL => {
-                let x = self.calibration_data.alpha_x * raw_point.x as f32
-                    + self.calibration_data.beta_x * raw_point.y as f32
-                    + self.calibration_data.delta_x;
-                let y = self.calibration_data.alpha_y * raw_point.x as f32
-                    + self.calibration_data.beta_y * raw_point.y as f32
-                    + self.calibration_data.delta_y;
-                (x as i32, y as i32)
-            }
-            TouchScreenOperationMode::CALIBRATION => {
-                /*
-                 * We're running calibration so just return raw
-                 * point measurements without compensation
-                 */
-                (raw_point.x, raw_point.y)
-            }
-        };
-        Ok(Point::new(x, y))
+        self.read_xy()
     }
 
     /// Get the actual touch point
     pub fn get_touch_point(&self) -> Point {
-        self.ts.average()
+        let raw_point = self.ts.average();
+
+        return match self.operation_mode {
+            TouchScreenOperationMode::NORMAL => {
+                let x = raw_point.x as f32;
+                let y = raw_point.y as f32;
+                let x = self.calibration_data.alpha_x * x
+                    + self.calibration_data.beta_x * y
+                    + self.calibration_data.delta_x;
+                let y = self.calibration_data.alpha_y * x
+                    + self.calibration_data.beta_y * y
+                    + self.calibration_data.delta_y;
+                let x = x as i32;
+                let y = y as i32;
+                Point::new(x, y)
+            }
+            TouchScreenOperationMode::CALIBRATION => raw_point,
+        };
     }
 
     /// Check if the display is currently touched
