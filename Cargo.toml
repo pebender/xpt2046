@@ -84,4 +84,7 @@ embassy-executor = { git = "https://github.com/embassy-rs/embassy.git", rev = "9
 name = "esp32c6-embassy"
 
 [[example]]
+name = "esp32c6-calibrate"
+
+[[example]]
 name = "stm32f411-rtic"

@@ -6,6 +6,7 @@ use defmt::Format;
 #[cfg_attr(feature = "defmt", derive(Format))]
 #[derive(Debug)]
 pub enum CalibrationError {
+    All,
     Alpha,
     Beta,
     Delta,

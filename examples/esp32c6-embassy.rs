@@ -20,7 +20,7 @@ use embassy_sync::{
 };
 use embassy_time::{Delay, Timer};
 use embedded_graphics::prelude::*;
-use embedded_graphics::{geometry, pixelcolor::Rgb565 as Rgb, primitives};
+use embedded_graphics::{geometry, pixelcolor::Rgb565, primitives};
 use esp_hal::{
     gpio::{Input, InputConfig, Level, Output, OutputConfig, Pull},
     spi::{
@@ -185,7 +185,8 @@ async fn touch_task(
 
     let mut touch_irq = Input::new(touch_irq, InputConfig::default().with_pull(Pull::Up));
 
-    let mut touch = xpt2046::Xpt2046::new(touch_spi_device, xpt2046::Orientation::Portrait);
+    let mut touch =
+        xpt2046::Xpt2046::new(touch_spi_device).with_orientation(xpt2046::Orientation::Portrait);
 
     touch.init(&mut touch_irq).unwrap();
     touch.clear_touch();
@@ -241,14 +242,15 @@ async fn lcd_task(
         .reset_pin(lcd_reset)
         .init(&mut delay)
         .unwrap();
+    lcd.clear(Rgb565::CSS_BLACK).unwrap();
     lcd_backlight.set_high();
 
     let dot = primitives::Rectangle::new(geometry::Point::zero(), geometry::Size::new_equal(1))
-        .into_styled(primitives::PrimitiveStyle::with_fill(Rgb::CSS_WHITE));
+        .into_styled(primitives::PrimitiveStyle::with_fill(Rgb565::CSS_WHITE));
 
     loop {
         match lcd_command_receiver.receive().await {
-            LcdCommand::Clear => lcd.clear(Rgb::CSS_BLACK).unwrap(),
+            LcdCommand::Clear => lcd.clear(Rgb565::CSS_BLACK).unwrap(),
             LcdCommand::TouchPoint(p) => dot.translate(p).draw(&mut lcd).unwrap(),
         }
     }
