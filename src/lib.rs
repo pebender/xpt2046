@@ -87,9 +87,9 @@ const READ_Y_CONTROL_BYTE: u8 = 0b1_001_0_0_00;
 const READ_X_SPI_TX_BUF: [u8; 2] = ((READ_X_CONTROL_BYTE as u16) << 5).to_be_bytes();
 const READ_Y_SPI_TX_BUF: [u8; 2] = ((READ_Y_CONTROL_BYTE as u16) << 5).to_be_bytes();
 
-const READ_XY_SPI_BUF_LEN: usize = 5;
+const READ_POSITION_SPI_BUF_LEN: usize = 5;
 
-const READ_XY_SPI_TX_BUF: [u8; READ_XY_SPI_BUF_LEN] = [
+const READ_POSITION_SPI_TX_BUF: [u8; READ_POSITION_SPI_BUF_LEN] = [
     READ_X_SPI_TX_BUF[0],
     READ_X_SPI_TX_BUF[1],
     READ_Y_SPI_TX_BUF[0],
@@ -276,22 +276,19 @@ where
     SPI: SpiDevice<u8, Error = SPIError>,
     SPIError: Debug,
 {
-    /// Read raw X,Y values.
-    fn read_xy(&mut self) -> Result<Point, SPIError> {
-        let mut read_xy_spi_rx_buf = [0; READ_XY_SPI_BUF_LEN];
+    /// Read position.
+    fn read_position(&mut self) -> Result<Point, SPIError> {
+        let mut read_position_spi_rx_buf = [0; READ_POSITION_SPI_BUF_LEN];
 
         self.spi
-            .transfer(&mut read_xy_spi_rx_buf, &READ_XY_SPI_TX_BUF)?;
+            .transfer(&mut read_position_spi_rx_buf, &READ_POSITION_SPI_TX_BUF)?;
 
-        let x: i32 = u16::from_be_bytes([read_xy_spi_rx_buf[1], read_xy_spi_rx_buf[2]]) as i32;
-        let y: i32 = u16::from_be_bytes([read_xy_spi_rx_buf[3], read_xy_spi_rx_buf[4]]) as i32;
+        let x: i32 =
+            u16::from_be_bytes([read_position_spi_rx_buf[1], read_position_spi_rx_buf[2]]) as i32;
+        let y: i32 =
+            u16::from_be_bytes([read_position_spi_rx_buf[3], read_position_spi_rx_buf[4]]) as i32;
 
         Ok(Point::new(x, y))
-    }
-
-    /// Read the calibrated point of touch from XPT2046
-    fn read_touch_point(&mut self) -> Result<Point, SPIError> {
-        self.read_xy()
     }
 
     /// Get the actual touch point
@@ -336,9 +333,9 @@ where
         IRQ: InputPin<Error = IRQError>,
         IRQError: Debug,
     {
-        // Make a throwaway X,Y measurement to make sure that the Power Down Select Mode
-        // bits are in the correct state to enable PENIRQ.
-        _ = self.read_xy().map_err(|e| Error::Spi(e))?;
+        // Make a throwaway position measurement so that the internal voltage
+        // reference is disabled and PENIRQ is enabled.
+        _ = self.read_position().map_err(|e| Error::Spi(e))?;
 
         Ok(())
     }
@@ -363,7 +360,7 @@ where
                 if irq.is_high().map_err(|e| Error::Irq(e))? {
                     self.screen_state = TouchScreenState::RELEASED
                 }
-                let point_sample = self.read_touch_point().map_err(|e| Error::Spi(e))?;
+                let point_sample = self.read_position().map_err(|e| Error::Spi(e))?;
                 self.ts.samples[self.ts.counter] = point_sample;
                 self.ts.counter += 1;
                 if self.ts.counter == MAX_SAMPLES {
@@ -372,7 +369,7 @@ where
                 }
             }
             TouchScreenState::TOUCHED => {
-                let point_sample = self.read_touch_point().map_err(|e| Error::Spi(e))?;
+                let point_sample = self.read_position().map_err(|e| Error::Spi(e))?;
                 self.ts.samples[self.ts.counter] = point_sample;
                 self.ts.counter += 1;
                 /*
