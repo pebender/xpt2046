@@ -11,16 +11,27 @@
 use esp_backtrace as _;
 use esp_println as _;
 
+use core::cell::RefCell;
 use embassy_embedded_hal::shared_bus::blocking::spi::SpiDeviceWithConfig;
 use embassy_executor::Spawner;
 use embassy_sync::{
-    blocking_mutex,
-    blocking_mutex::raw::CriticalSectionRawMutex,
+    blocking_mutex::{raw::CriticalSectionRawMutex, Mutex},
     channel::{Channel, Receiver, Sender},
 };
 use embassy_time::{Delay, Timer};
-
 use embedded_graphics::prelude::*;
+use embedded_graphics::{geometry, pixelcolor::Rgb565 as Rgb, primitives};
+use esp_hal::{
+    gpio::{Input, InputConfig, Level, Output, OutputConfig, Pull},
+    spi::{
+        master::{Config, Spi},
+        Mode,
+    },
+    time::Rate,
+    Blocking,
+};
+use mipidsi::{models::ILI9341Rgb565, options::ColorOrder, options::Orientation};
+use static_cell::StaticCell;
 
 #[cfg(feature = "defmt")]
 use defmt::Format;
@@ -61,7 +72,7 @@ struct PeripheralMap<'a> {
 #[derive(Debug)]
 enum LcdCommand {
     Clear,
-    TouchPoint(embedded_graphics::geometry::Point),
+    TouchPoint(geometry::Point),
 }
 
 // The embassy-executor main sets up shared hardware resources, resulting in
@@ -76,7 +87,7 @@ enum LcdCommand {
 // value (v) and returns a static reference to the data.
 macro_rules! make_static {
     ($time:ty,$v:expr) => {{
-        static STATIC_CELL: static_cell::StaticCell<$time> = static_cell::StaticCell::new();
+        static STATIC_CELL: StaticCell<$time> = StaticCell::new();
         STATIC_CELL.init(($v))
     }};
 }
@@ -108,15 +119,14 @@ async fn main(spawner: Spawner) -> ! {
     esp_hal_embassy::init(timer0.alarm0);
 
     // Set up the shared SPI bus.
-    let spi_config = esp_hal::spi::master::Config::default();
-    let spi = esp_hal::spi::master::Spi::new(peripheral_map.spi, spi_config)
+    let spi = Spi::new(peripheral_map.spi, Config::default())
         .unwrap()
         .with_sck(peripheral_map.spi_sclk)
         .with_miso(peripheral_map.spi_miso)
         .with_mosi(peripheral_map.spi_mosi);
+    let spi_bus = Mutex::<CriticalSectionRawMutex, _>::new(RefCell::new(spi));
     let spi_bus =
-        blocking_mutex::Mutex::<CriticalSectionRawMutex, _>::new(core::cell::RefCell::new(spi));
-    let spi_bus = &*make_static!(blocking_mutex::Mutex<CriticalSectionRawMutex, core::cell::RefCell<esp_hal::spi::master::Spi<'static, esp_hal::Blocking>>>, spi_bus);
+        &*make_static!(Mutex<CriticalSectionRawMutex, RefCell<Spi<'static, Blocking>>>, spi_bus);
 
     // Set up the channel for sending commands to the lcd task.
     let lcd_command_channel = Channel::<CriticalSectionRawMutex, LcdCommand, 16>::new();
@@ -158,29 +168,22 @@ async fn main(spawner: Spawner) -> ! {
 
 #[embassy_executor::task]
 async fn touch_task(
-    spi_bus: &'static blocking_mutex::Mutex<
-        CriticalSectionRawMutex,
-        core::cell::RefCell<esp_hal::spi::master::Spi<'static, esp_hal::Blocking>>,
-    >,
+    spi_bus: &'static Mutex<CriticalSectionRawMutex, RefCell<Spi<'static, Blocking>>>,
     touch_cs: GPIO_TOUCH_CS<'static>,
     touch_irq: GPIO_TOUCH_IRQ<'static>,
     lcd_command_sender: &'static Sender<'static, CriticalSectionRawMutex, LcdCommand, 16>,
 ) -> ! {
     // Set up the touch SPI device.
-    let touch_cs = esp_hal::gpio::Output::new(
+    let touch_cs = Output::new(touch_cs, Level::High, OutputConfig::default());
+    let touch_spi_device = SpiDeviceWithConfig::new(
+        spi_bus,
         touch_cs,
-        esp_hal::gpio::Level::High,
-        esp_hal::gpio::OutputConfig::default(),
+        Config::default()
+            .with_mode(Mode::_0)
+            .with_frequency(Rate::from_mhz(2)),
     );
-    let touch_spi_config = esp_hal::spi::master::Config::default()
-        .with_mode(esp_hal::spi::Mode::_0)
-        .with_frequency(esp_hal::time::Rate::from_mhz(2));
-    let touch_spi_device = SpiDeviceWithConfig::new(spi_bus, touch_cs, touch_spi_config);
 
-    let mut touch_irq = esp_hal::gpio::Input::new(
-        touch_irq,
-        esp_hal::gpio::InputConfig::default().with_pull(esp_hal::gpio::Pull::Up),
-    );
+    let mut touch_irq = Input::new(touch_irq, InputConfig::default().with_pull(Pull::Up));
 
     let mut touch = xpt2046::Xpt2046::new(touch_spi_device, xpt2046::Orientation::Portrait);
 
@@ -204,10 +207,7 @@ async fn touch_task(
 
 #[embassy_executor::task]
 async fn lcd_task(
-    spi_bus: &'static blocking_mutex::Mutex<
-        CriticalSectionRawMutex,
-        core::cell::RefCell<esp_hal::spi::master::Spi<'static, esp_hal::Blocking>>,
-    >,
+    spi_bus: &'static Mutex<CriticalSectionRawMutex, RefCell<Spi<'static, Blocking>>>,
     lcd_cs: GPIO_LCD_CS<'static>,
     lcd_dc: GPIO_LCD_DC<'static>,
     lcd_reset: GPIO_LCD_RESET<'static>,
@@ -215,57 +215,40 @@ async fn lcd_task(
     lcd_command_receiver: &'static Receiver<'static, CriticalSectionRawMutex, LcdCommand, 16>,
 ) -> ! {
     // Set up the LCD SPI device.
-    let lcd_cs = esp_hal::gpio::Output::new(
+    let lcd_cs = Output::new(lcd_cs, Level::High, OutputConfig::default());
+    let lcd_spi_device = SpiDeviceWithConfig::new(
+        spi_bus,
         lcd_cs,
-        esp_hal::gpio::Level::High,
-        esp_hal::gpio::OutputConfig::default(),
+        Config::default()
+            .with_mode(Mode::_0)
+            .with_frequency(Rate::from_mhz(40)),
     );
-    let lcd_spi_config = esp_hal::spi::master::Config::default()
-        .with_mode(esp_hal::spi::Mode::_0)
-        .with_frequency(esp_hal::time::Rate::from_mhz(40));
-    let lcd_spi_device = SpiDeviceWithConfig::new(spi_bus, lcd_cs, lcd_spi_config);
 
-    let lcd_dc = esp_hal::gpio::Output::new(
-        lcd_dc,
-        esp_hal::gpio::Level::Low,
-        esp_hal::gpio::OutputConfig::default(),
-    );
-    let lcd_reset = esp_hal::gpio::Output::new(
-        lcd_reset,
-        esp_hal::gpio::Level::Low,
-        esp_hal::gpio::OutputConfig::default(),
-    );
-    let mut lcd_backlight = esp_hal::gpio::Output::new(
-        lcd_backlight,
-        esp_hal::gpio::Level::Low,
-        esp_hal::gpio::OutputConfig::default(),
-    );
+    // Set up the mipidsi display interface
+    let lcd_dc = Output::new(lcd_dc, Level::Low, OutputConfig::default());
     let mut lcd_buffer = [0_u8; 512];
     let lcd_interface =
         mipidsi::interface::SpiInterface::new(lcd_spi_device, lcd_dc, &mut lcd_buffer);
+
+    // Set up the mipidsi display
+    let mut lcd_backlight = Output::new(lcd_backlight, Level::Low, OutputConfig::default());
+    let lcd_reset = Output::new(lcd_reset, Level::Low, OutputConfig::default());
     let mut delay = Delay;
-    let mut lcd = mipidsi::Builder::new(mipidsi::models::ILI9341Rgb565, lcd_interface)
+    let mut lcd = mipidsi::Builder::new(ILI9341Rgb565, lcd_interface)
         .display_size(240, 320)
-        .orientation(mipidsi::options::Orientation::new())
-        .color_order(mipidsi::options::ColorOrder::Bgr)
+        .orientation(Orientation::new())
+        .color_order(ColorOrder::Bgr)
         .reset_pin(lcd_reset)
         .init(&mut delay)
         .unwrap();
     lcd_backlight.set_high();
 
-    let dot = embedded_graphics::primitives::Rectangle::new(
-        embedded_graphics::geometry::Point::zero(),
-        embedded_graphics::geometry::Size::new_equal(1),
-    )
-    .into_styled(embedded_graphics::primitives::PrimitiveStyle::with_fill(
-        embedded_graphics::pixelcolor::Rgb565::CSS_WHITE,
-    ));
+    let dot = primitives::Rectangle::new(geometry::Point::zero(), geometry::Size::new_equal(1))
+        .into_styled(primitives::PrimitiveStyle::with_fill(Rgb::CSS_WHITE));
 
     loop {
         match lcd_command_receiver.receive().await {
-            LcdCommand::Clear => lcd
-                .clear(embedded_graphics::pixelcolor::Rgb565::CSS_BLACK)
-                .unwrap(),
+            LcdCommand::Clear => lcd.clear(Rgb::CSS_BLACK).unwrap(),
             LcdCommand::TouchPoint(p) => dot.translate(p).draw(&mut lcd).unwrap(),
         }
     }
