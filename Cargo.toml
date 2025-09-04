@@ -43,7 +43,7 @@ log = [
 defmt = { version = "1.0.1", optional = true }
 embedded-graphics = { version = "0.8.1" }
 embedded-hal = { version = "1.0.0" }
-log = { version = "0.4.27", default-features = false, optional = true }
+log = { version = "0.4.28", default-features = false, optional = true }
 
 [target.riscv32imac-unknown-none-elf.dev-dependencies]
 # esp-hal 1.0.0-rc.0 depends on embassy-embedded-hal 0.3.x/0.4.0.
