@@ -176,15 +176,6 @@ pub enum TouchScreenState {
 }
 
 #[cfg_attr(feature = "defmt", derive(Format))]
-#[derive(Debug, PartialEq)]
-pub enum TouchScreenOperationMode {
-    /// Normal touch reading
-    NORMAL,
-    /// Manual calibration mode
-    CALIBRATION,
-}
-
-#[cfg_attr(feature = "defmt", derive(Format))]
 #[derive(Debug)]
 pub struct TouchSamples {
     /// All the touch samples
@@ -227,7 +218,6 @@ pub struct Xpt2046<SPI> {
     /// Buffer for the touch data samples
     ts: TouchSamples,
     calibration_data: CalibrationData,
-    operation_mode: TouchScreenOperationMode,
 }
 
 impl<SPI> Xpt2046<SPI>
@@ -240,7 +230,6 @@ where
             screen_state: TouchScreenState::IDLE,
             ts: TouchSamples::default(),
             calibration_data: Orientation::Portrait.calibration_data(),
-            operation_mode: TouchScreenOperationMode::NORMAL,
         }
     }
 
