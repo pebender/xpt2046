@@ -19,7 +19,6 @@
 //! [`embedded-hal`](https://github.com/rust-embedded/embedded-hal) traits.
 //!
 
-use crate::calibration::calibrate;
 pub use crate::error::Error;
 use core::fmt::Debug;
 use embedded_graphics::{draw_target::DrawTarget, geometry::Point, pixelcolor::Rgb565};
@@ -106,61 +105,6 @@ pub struct CalibrationData {
     pub delta_y: f32,
 }
 
-/// Orientation of the touch screen
-#[cfg_attr(feature = "defmt", derive(Format))]
-#[derive(Debug)]
-pub enum Orientation {
-    Portrait,
-    PortraitFlipped,
-    Landscape,
-    LandscapeFlipped,
-}
-
-impl Orientation {
-    /// Default calibration values used for transforming raw touch measurements
-    /// into screen positions. They assume the screen is a 240x320 pixel screen
-    /// with either a portrait or landscape orientation.
-    pub fn calibration_data(&self) -> CalibrationData {
-        match self {
-            Orientation::Portrait => CalibrationData {
-                alpha_x: -0.0636839,
-                beta_x: -0.0009337,
-                delta_x: 250.342,
-                alpha_y: -0.00118110,
-                beta_y: -0.0889775,
-                delta_y: 356.538,
-            },
-            // normal X and normal Y
-            Orientation::PortraitFlipped => CalibrationData {
-                alpha_x: 0.0647828,
-                beta_x: 0.0006100,
-                delta_x: -13.634,
-                alpha_y: 0.0001381,
-                beta_y: 0.0890609,
-                delta_y: -35.73,
-            },
-            // rotate 90 degrees.
-            Orientation::Landscape => CalibrationData {
-                alpha_x: 0.0016532,
-                beta_x: -0.0885542,
-                delta_x: 349.800,
-                alpha_y: 0.06543699,
-                beta_y: 0.0007309,
-                delta_y: -15.290,
-            },
-            // rotate 90 degrees.
-            Orientation::LandscapeFlipped => CalibrationData {
-                alpha_x: 0.0006510,
-                beta_x: 0.0902216,
-                delta_x: -38.657,
-                alpha_y: -0.0667030,
-                beta_y: -0.0010005,
-                delta_y: 258.08,
-            },
-        }
-    }
-}
-
 /// Current state of the driver
 #[cfg_attr(feature = "defmt", derive(Format))]
 #[derive(Debug, PartialEq)]
@@ -215,8 +159,9 @@ pub struct Xpt2046<SPI> {
     spi: SPI,
     /// Current driver state
     screen_state: TouchScreenState,
-    /// Buffer for the touch data samples
+    /// Buffer for the touch measurement samples
     ts: TouchSamples,
+    /// Calibration data for transforming touch measurements into display pixel positions.
     calibration_data: CalibrationData,
 }
 
@@ -224,25 +169,17 @@ impl<SPI> Xpt2046<SPI>
 where
     SPI: SpiDevice<u8>,
 {
-    pub fn new(spi: SPI) -> Self {
+    pub fn new(spi: SPI, calibration_data: &CalibrationData) -> Self {
         Self {
             spi,
             screen_state: TouchScreenState::IDLE,
             ts: TouchSamples::default(),
-            calibration_data: Orientation::Portrait.calibration_data(),
+            calibration_data: *calibration_data,
         }
     }
 
-    pub fn with_orientation(mut self, orientation: Orientation) -> Self {
-        self.calibration_data = orientation.calibration_data();
-
-        self
-    }
-
-    pub fn with_calibration_data(mut self, calibration_data: &CalibrationData) -> Self {
+    pub fn set_calibration_data(&mut self, calibration_data: &CalibrationData) {
         self.calibration_data = *calibration_data;
-
-        self
     }
 }
 
@@ -361,7 +298,7 @@ where
     /// Collects the readings for sample points and calculates a set of
     /// calibration data. There is default calibration data that seems to work
     /// okay.
-    pub fn calibrate<IRQ, IRQError, DT, DELAY>(
+    pub fn run_calibration<IRQ, IRQError, DT, DELAY>(
         &mut self,
         irq: &mut IRQ,
         dt: &mut DT,
@@ -373,6 +310,6 @@ where
         DT: DrawTarget<Color = Rgb565>,
         DELAY: DelayNs,
     {
-        calibrate(self, irq, dt, delay)
+        calibration::run_calibration(self, irq, dt, delay)
     }
 }

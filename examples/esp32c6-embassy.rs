@@ -185,8 +185,10 @@ async fn touch_task(
 
     let mut touch_irq = Input::new(touch_irq, InputConfig::default().with_pull(Pull::Up));
 
-    let mut touch =
-        xpt2046::Xpt2046::new(touch_spi_device).with_orientation(xpt2046::Orientation::Portrait);
+    let mut touch = xpt2046::Xpt2046::new(
+        touch_spi_device,
+        &xpt2046::calibration::estimate_calibration(false, false, true, 240, 320),
+    );
 
     touch.init(&mut touch_irq).unwrap();
     touch.clear_touch();
@@ -237,7 +239,7 @@ async fn lcd_task(
     let mut delay = Delay;
     let mut lcd = mipidsi::Builder::new(ILI9341Rgb565, lcd_interface)
         .display_size(240, 320)
-        .orientation(Orientation::new())
+        .orientation(Orientation::new().flip_horizontal())
         .color_order(ColorOrder::Bgr)
         .reset_pin(lcd_reset)
         .init(&mut delay)

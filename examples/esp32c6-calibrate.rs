@@ -116,7 +116,7 @@ async fn main(spawner: Spawner) -> ! {
     let mut delay = Delay;
     let mut lcd = mipidsi::Builder::new(ILI9341Rgb565, lcd_interface)
         .display_size(240, 320)
-        .orientation(Orientation::new())
+        .orientation(Orientation::new().flip_horizontal())
         .color_order(ColorOrder::Bgr)
         .reset_pin(lcd_reset)
         .init(&mut delay)
@@ -136,12 +136,18 @@ async fn main(spawner: Spawner) -> ! {
 
     let mut touch_irq = Input::new(touch_irq, InputConfig::default().with_pull(Pull::Up));
 
-    let mut touch =
-        xpt2046::Xpt2046::new(touch_spi_device).with_orientation(xpt2046::Orientation::Portrait);
+    let mut touch = xpt2046::Xpt2046::new(
+        touch_spi_device,
+        &xpt2046::calibration::estimate_calibration(false, false, true, 240, 320),
+    );
 
     loop {
-        match touch.calibrate(&mut touch_irq, &mut lcd, &mut delay) {
-            Ok(calibration_data) => defmt::println!("{:?}", calibration_data),
+        let calibration_data = touch.run_calibration(&mut touch_irq, &mut lcd, &mut delay);
+        match calibration_data {
+            Ok(v) => {
+                defmt::println!("{:?}", v);
+                touch.set_calibration_data(&v);
+            }
             Err(e) => defmt::println!("{:?}", e),
         }
         Timer::after_secs(5).await;

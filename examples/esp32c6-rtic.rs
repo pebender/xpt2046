@@ -65,8 +65,10 @@ mod app {
         touch_irq.listen(Event::FallingEdge);
 
         // Set up touch device.
-        let mut touch_drv =
-            Xpt2046::new(touch_spi_device).with_orientation(xpt2046::Orientation::PortraitFlipped);
+        let mut touch_drv = Xpt2046::new(
+            touch_spi_device,
+            &xpt2046::calibration::estimate_calibration(false, false, true, 240, 320),
+        );
         touch_drv.init(&mut touch_irq).unwrap();
         touch_drv.clear_touch();
 
