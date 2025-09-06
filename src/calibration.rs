@@ -22,6 +22,24 @@ pub struct CalibrationPoints {
     pub c: Point,
 }
 
+#[cfg_attr(feature = "defmt", derive(Format))]
+#[derive(Debug)]
+pub struct Transform {
+    pub swap_xy: bool,
+    pub mirror_x: bool,
+    pub mirror_y: bool,
+}
+
+impl Transform {
+    pub fn new(swap_xy: bool, mirror_x: bool, mirror_y: bool) -> Self {
+        Transform {
+            swap_xy,
+            mirror_x,
+            mirror_y,
+        }
+    }
+}
+
 /// Orientation of the touch screen
 #[cfg_attr(feature = "defmt", derive(Format))]
 #[derive(Debug)]
@@ -108,12 +126,7 @@ pub const fn get_builtin_calibration_data(orientation: Orientation) -> Calibrati
 /// the user to initiate the calibration process. Is is expected that after the
 /// calibration process has been completed successfully, the device will use the
 /// store and use the calibration data from the successful calibration process.
-pub fn estimate_calibration_data(
-    swap_xy: bool,
-    mirror_x: bool,
-    mirror_y: bool,
-    display_size: Size,
-) -> CalibrationData {
+pub fn estimate_calibration_data(transform: Transform, display_size: Size) -> CalibrationData {
     const TOUCH_SIZE: f32 = 4096.0;
 
     let mut calibration_data = CalibrationData {
@@ -125,7 +138,7 @@ pub fn estimate_calibration_data(
         delta_y: 0.0,
     };
 
-    if swap_xy {
+    if transform.swap_xy {
         let swap_x = calibration_data.alpha_x;
         calibration_data.alpha_x = calibration_data.beta_x;
         calibration_data.beta_x = swap_x;
@@ -133,14 +146,13 @@ pub fn estimate_calibration_data(
         calibration_data.alpha_y = calibration_data.beta_y;
         calibration_data.beta_y = swap_y;
     }
-
-    if mirror_x {
+    if transform.mirror_x {
         calibration_data.alpha_x *= -1.0;
         calibration_data.beta_x *= -1.0;
         calibration_data.delta_x *= -1.0;
         calibration_data.delta_x += display_size.width as f32;
     }
-    if mirror_y {
+    if transform.mirror_y {
         calibration_data.alpha_y *= -1.0;
         calibration_data.beta_y *= -1.0;
         calibration_data.delta_y *= -1.0;
