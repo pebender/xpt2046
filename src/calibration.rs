@@ -25,8 +25,11 @@ pub struct CalibrationPoints {
 #[cfg_attr(feature = "defmt", derive(Format))]
 #[derive(Debug)]
 pub struct Transform {
+    /// Swap the X and Y axes.
     pub swap_xy: bool,
+    /// Mirror about the X axis. mirror_x is applied after swap_xy;
     pub mirror_x: bool,
+    /// Mirror about the Y axis. mirror_y is applied after swap_xy;
     pub mirror_y: bool,
 }
 
@@ -73,16 +76,16 @@ pub fn estimate_calibration_data(transform: Transform, display_size: Size) -> Ca
         calibration_data.beta_y = swap_y;
     }
     if transform.mirror_x {
-        calibration_data.alpha_x *= -1.0;
-        calibration_data.beta_x *= -1.0;
-        calibration_data.delta_x *= -1.0;
-        calibration_data.delta_x += display_size.width as f32;
-    }
-    if transform.mirror_y {
         calibration_data.alpha_y *= -1.0;
         calibration_data.beta_y *= -1.0;
         calibration_data.delta_y *= -1.0;
         calibration_data.delta_y += display_size.height as f32;
+    }
+    if transform.mirror_y {
+        calibration_data.alpha_x *= -1.0;
+        calibration_data.beta_x *= -1.0;
+        calibration_data.delta_x *= -1.0;
+        calibration_data.delta_x += display_size.width as f32;
     }
 
     defmt::info!("calibration estimate: {:?}", calibration_data);

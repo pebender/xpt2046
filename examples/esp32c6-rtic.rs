@@ -68,7 +68,7 @@ mod app {
         let mut touch_drv = Xpt2046::new(
             touch_spi_device,
             &xpt2046::calibration::estimate_calibration_data(
-                xpt2046::calibration::Transform::new(false, false, true),
+                xpt2046::calibration::Transform::new(false, true, false),
                 Size::new(240, 320),
             ),
         );
