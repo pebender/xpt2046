@@ -16,7 +16,7 @@ use embassy_embedded_hal::shared_bus::blocking::spi::SpiDeviceWithConfig;
 use embassy_executor::Spawner;
 use embassy_sync::blocking_mutex::{raw::CriticalSectionRawMutex, Mutex};
 use embassy_time::{Delay, Timer};
-use embedded_graphics::pixelcolor::Rgb565 as Rgb;
+use embedded_graphics::pixelcolor::Rgb565;
 use embedded_graphics::prelude::*;
 use esp_hal::{
     gpio::{Input, InputConfig, Level, Output, OutputConfig, Pull},
@@ -121,7 +121,7 @@ async fn main(spawner: Spawner) -> ! {
         .reset_pin(lcd_reset)
         .init(&mut delay)
         .unwrap();
-    lcd.clear(Rgb::CSS_BLACK).unwrap();
+    lcd.clear(Rgb565::BLACK).unwrap();
     lcd_backlight.set_high();
 
     // Set up the touch SPI device.
@@ -138,11 +138,17 @@ async fn main(spawner: Spawner) -> ! {
 
     let mut touch = xpt2046::Xpt2046::new(
         touch_spi_device,
-        &xpt2046::calibration::estimate_calibration(false, false, true, 240, 320),
+        &xpt2046::calibration::estimate_calibration_data(
+            false,
+            false,
+            true,
+            xpt2046::Size::new(240, 320),
+        ),
     );
 
     loop {
-        let calibration_data = touch.run_calibration(&mut touch_irq, &mut lcd, &mut delay);
+        let calibration_data =
+            xpt2046::calibration::run_calibration(&mut touch, &mut touch_irq, &mut lcd, &mut delay);
         match calibration_data {
             Ok(v) => {
                 defmt::println!("{:?}", v);

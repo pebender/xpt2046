@@ -21,8 +21,8 @@
 
 pub use crate::error::Error;
 use core::fmt::Debug;
-use embedded_graphics::{draw_target::DrawTarget, geometry::Point, pixelcolor::Rgb565};
-use embedded_hal::{delay::DelayNs, digital::InputPin, spi::SpiDevice};
+pub use embedded_graphics::geometry::{Point, Size};
+use embedded_hal::{digital::InputPin, spi::SpiDevice};
 
 #[cfg(feature = "defmt")]
 use defmt::Format;
@@ -293,23 +293,5 @@ where
             }
         }
         Ok(())
-    }
-
-    /// Collects the readings for sample points and calculates a set of
-    /// calibration data. There is default calibration data that seems to work
-    /// okay.
-    pub fn run_calibration<IRQ, IRQError, DT, DELAY>(
-        &mut self,
-        irq: &mut IRQ,
-        dt: &mut DT,
-        delay: &mut DELAY,
-    ) -> Result<CalibrationData, Error<SPIError, IRQError>>
-    where
-        IRQ: InputPin<Error = IRQError>,
-        IRQError: Debug,
-        DT: DrawTarget<Color = Rgb565>,
-        DELAY: DelayNs,
-    {
-        calibration::run_calibration(self, irq, dt, delay)
     }
 }

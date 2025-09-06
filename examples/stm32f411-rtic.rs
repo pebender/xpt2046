@@ -14,7 +14,6 @@ mod app {
         spi::{Mode, Phase, Polarity, Spi},
         timer::Delay,
     };
-    use xpt2046::{self, Xpt2046};
 
     type TouchSpi = embedded_hal_bus::spi::ExclusiveDevice<
         Spi<SPI1>,
@@ -23,7 +22,7 @@ mod app {
     >;
     #[shared]
     struct Shared {
-        touch_drv: Xpt2046<TouchSpi>,
+        touch_drv: xpt2046::Xpt2046<TouchSpi>,
         touch_irq: Pin<'A', 2, Input>,
         touch_exti: EXTI,
     }
@@ -88,9 +87,14 @@ mod app {
         touch_irq.enable_interrupt(&mut touch_exti);
 
         // Set up touch driver.
-        let mut touch_drv = Xpt2046::new(
+        let mut touch_drv = xpt2046::Xpt2046::new(
             touch_spi_device,
-            &xpt2046::calibration::estimate_calibration(false, false, true, 240, 320),
+            &xpt2046::calibration::estimate_calibration_data(
+                false,
+                false,
+                true,
+                xpt2046::Size::new(240, 320),
+            ),
         );
         touch_drv.init(&mut touch_irq).unwrap();
         touch_drv.clear_touch();

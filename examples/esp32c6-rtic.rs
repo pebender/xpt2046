@@ -16,7 +16,7 @@ mod app {
     use esp_hal::delay::Delay;
     use esp_hal::gpio::{Event, Input, InputConfig, Level, Output, OutputConfig, Pull};
     use esp_hal::{spi::master::Spi, Blocking};
-    use xpt2046::{self, Xpt2046};
+    use xpt2046::{self, Size, Xpt2046};
 
     type TouchSpi<'a> =
         embedded_hal_bus::spi::ExclusiveDevice<Spi<'a, Blocking>, Output<'a>, Delay>;
@@ -67,7 +67,12 @@ mod app {
         // Set up touch device.
         let mut touch_drv = Xpt2046::new(
             touch_spi_device,
-            &xpt2046::calibration::estimate_calibration(false, false, true, 240, 320),
+            &xpt2046::calibration::estimate_calibration_data(
+                false,
+                false,
+                true,
+                Size::new(240, 320),
+            ),
         );
         touch_drv.init(&mut touch_irq).unwrap();
         touch_drv.clear_touch();

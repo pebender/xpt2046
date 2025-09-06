@@ -187,7 +187,12 @@ async fn touch_task(
 
     let mut touch = xpt2046::Xpt2046::new(
         touch_spi_device,
-        &xpt2046::calibration::estimate_calibration(false, false, true, 240, 320),
+        &xpt2046::calibration::estimate_calibration_data(
+            false,
+            false,
+            true,
+            xpt2046::Size::new(240, 320),
+        ),
     );
 
     touch.init(&mut touch_irq).unwrap();
