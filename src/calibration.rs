@@ -1,6 +1,5 @@
 use super::CalibrationData;
-use super::Xpt2046;
-use crate::error::{CalibrationError, Error};
+use super::{Error, Xpt2046};
 use core::fmt::Debug;
 pub use embedded_graphics::geometry::{Point, Size};
 use embedded_graphics::{
@@ -13,6 +12,26 @@ use embedded_hal::{delay::DelayNs, digital::InputPin, spi::SpiDevice};
 
 #[cfg(feature = "defmt")]
 use defmt::Format;
+
+#[cfg_attr(feature = "defmt", derive(Format))]
+#[derive(Debug)]
+pub enum CalibrationRunError<SpiError, IrqError, DTError> {
+    Xpt2046(Error<SpiError, IrqError>),
+    DrawTarget(DTError),
+    Calibration(CalibrationError),
+}
+
+#[cfg_attr(feature = "defmt", derive(Format))]
+#[derive(Debug)]
+pub enum CalibrationError {
+    All,
+    AlphaX,
+    BetaX,
+    DeltaX,
+    AlphaY,
+    BetaY,
+    DeltaY,
+}
 
 #[cfg_attr(feature = "defmt", derive(Format))]
 #[derive(Debug)]
@@ -157,27 +176,27 @@ pub fn calculate_calibration_data(
 
     let alpha_x = det_alpha_x / det;
     if !alpha_x.is_normal() {
-        return Err(CalibrationError::Alpha);
+        return Err(CalibrationError::AlphaX);
     }
     let beta_x = det_beta_x / det;
     if !beta_x.is_normal() {
-        return Err(CalibrationError::Beta);
+        return Err(CalibrationError::BetaX);
     }
     let delta_x = det_delta_x / det;
     if !delta_x.is_normal() {
-        return Err(CalibrationError::Delta);
+        return Err(CalibrationError::DeltaX);
     }
     let alpha_y = det_alpha_y / det;
     if !alpha_y.is_normal() {
-        return Err(CalibrationError::Alpha);
+        return Err(CalibrationError::AlphaY);
     }
     let beta_y = det_beta_y / det;
     if !beta_y.is_normal() {
-        return Err(CalibrationError::Beta);
+        return Err(CalibrationError::BetaY);
     }
     let delta_y = det_delta_y / det;
     if !delta_y.is_normal() {
-        return Err(CalibrationError::Delta);
+        return Err(CalibrationError::DeltaY);
     }
 
     Ok(CalibrationData {
@@ -212,18 +231,19 @@ where
     Ok(())
 }
 
-pub fn run_calibration<SPI, SPIError, IRQ, IRQError, DT, DELAY>(
+pub fn run_calibration<SPI, SPIError, IRQ, IRQError, DT, DTError, DELAY>(
     touch: &mut Xpt2046<SPI>,
     irq: &mut IRQ,
     draw_target: &mut DT,
     delay: &mut DELAY,
-) -> Result<CalibrationData, Error<SPIError, IRQError>>
+) -> Result<CalibrationData, CalibrationRunError<SPIError, IRQError, DTError>>
 where
     SPI: SpiDevice<u8, Error = SPIError>,
     SPIError: Debug,
     IRQ: InputPin<Error = IRQError>,
     IRQError: Debug,
-    DT: DrawTarget<Color: RgbColor>,
+    DT: DrawTarget<Color: RgbColor, Error = DTError>,
+    DTError: Debug,
     DELAY: DelayNs,
 {
     let display_cp = create_calibration_points(draw_target.bounding_box().size);
@@ -237,17 +257,22 @@ where
     // Measure touch point for calibration point a.
     draw_target
         .clear(DT::Color::BLACK)
-        .map_err(|_e| Error::Calibration(CalibrationError::DrawTarget))?;
+        .map_err(|e| CalibrationRunError::DrawTarget(e))?;
     draw_calibration_point(draw_target, &display_cp.a)
-        .map_err(|_e| Error::Calibration(CalibrationError::DrawTarget))?;
+        .map_err(|e| CalibrationRunError::DrawTarget(e))?;
     touch.clear_touch();
     while !touch.is_touched() {
-        touch.run(irq)?;
+        touch
+            .run(irq)
+            .map_err(|e| CalibrationRunError::Xpt2046(e))?;
         delay.delay_us(500);
     }
     touch_cp.a = touch.get_touch_point_raw();
     let _ = draw_target.clear(DT::Color::BLACK);
-    while irq.is_low().map_err(|e| Error::Irq(e))? {
+    while irq
+        .is_low()
+        .map_err(|e| CalibrationRunError::Xpt2046(Error::Irq(e)))?
+    {
         delay.delay_ms(100);
     }
     delay.delay_ms(200);
@@ -255,19 +280,24 @@ where
     // Measure touch point for calibration point b.
     draw_target
         .clear(DT::Color::BLACK)
-        .map_err(|_e| Error::Calibration(CalibrationError::DrawTarget))?;
+        .map_err(|e| CalibrationRunError::DrawTarget(e))?;
     draw_calibration_point(draw_target, &display_cp.b)
-        .map_err(|_e| Error::Calibration(CalibrationError::DrawTarget))?;
+        .map_err(|e| CalibrationRunError::DrawTarget(e))?;
     touch.clear_touch();
     while !touch.is_touched() {
-        touch.run(irq)?;
+        touch
+            .run(irq)
+            .map_err(|e| CalibrationRunError::Xpt2046(e))?;
         delay.delay_us(500);
     }
     touch_cp.b = touch.get_touch_point_raw();
     draw_target
         .clear(DT::Color::BLACK)
-        .map_err(|_e| Error::Calibration(CalibrationError::DrawTarget))?;
-    while irq.is_low().map_err(|e| Error::Irq(e))? {
+        .map_err(|e| CalibrationRunError::DrawTarget(e))?;
+    while irq
+        .is_low()
+        .map_err(|e| CalibrationRunError::Xpt2046(Error::Irq(e)))?
+    {
         delay.delay_ms(100);
     }
     delay.delay_ms(200);
@@ -275,17 +305,22 @@ where
     // Measure touch point for calibration point c.
     draw_target
         .clear(DT::Color::BLACK)
-        .map_err(|_e| Error::Calibration(CalibrationError::DrawTarget))?;
+        .map_err(|e| CalibrationRunError::DrawTarget(e))?;
     draw_calibration_point(draw_target, &display_cp.c)
-        .map_err(|_e| Error::Calibration(CalibrationError::DrawTarget))?;
+        .map_err(|e| CalibrationRunError::DrawTarget(e))?;
     touch.clear_touch();
     while !touch.is_touched() {
-        touch.run(irq)?;
+        touch
+            .run(irq)
+            .map_err(|e| CalibrationRunError::Xpt2046(e))?;
         delay.delay_us(500);
     }
     touch_cp.c = touch.get_touch_point_raw();
     let _ = draw_target.clear(DT::Color::BLACK);
-    while irq.is_low().map_err(|e| Error::Irq(e))? {
+    while irq
+        .is_low()
+        .map_err(|e| CalibrationRunError::Xpt2046(Error::Irq(e)))?
+    {
         delay.delay_ms(100);
     }
     delay.delay_ms(200);
@@ -299,5 +334,5 @@ where
         defmt::debug!("calculated calibration data: {:?}", calibration_data);
     }
 
-    calibration_data.map_err(|e| Error::Calibration(e))
+    calibration_data.map_err(|e| CalibrationRunError::Calibration(e))
 }

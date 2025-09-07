@@ -19,7 +19,6 @@
 //! [`embedded-hal`](https://github.com/rust-embedded/embedded-hal) traits.
 //!
 
-pub use crate::error::Error;
 use core::fmt::Debug;
 pub use embedded_graphics::geometry::{Point, Size};
 use embedded_hal::{digital::InputPin, spi::SpiDevice};
@@ -28,7 +27,6 @@ use embedded_hal::{digital::InputPin, spi::SpiDevice};
 use defmt::Format;
 
 pub mod calibration;
-pub mod error;
 
 // For information on the operation of the XPT2046, refer to the XPT2046 data
 // sheet <https://www.snapeda.com/parts/XPT2046/Xptek/datasheet/>. The format of
@@ -95,6 +93,15 @@ const READ_POSITION_SPI_TX_BUF: [u8; READ_POSITION_SPI_BUF_LEN] = [
 const MAX_SAMPLES: usize = 128;
 
 #[cfg_attr(feature = "defmt", derive(Format))]
+#[derive(Debug)]
+pub enum Error<SpiError, IrqError> {
+    /// SPI error
+    Spi(SpiError),
+    /// IRQ error
+    Irq(IrqError),
+}
+
+#[cfg_attr(feature = "defmt", derive(Format))]
 #[derive(Debug, Clone, Copy)]
 pub struct CalibrationData {
     pub alpha_x: f32,
@@ -154,9 +161,9 @@ impl TouchSamples {
 
 #[cfg_attr(feature = "defmt", derive(Format))]
 #[derive(Debug)]
-pub struct Xpt2046<SPI> {
+pub struct Xpt2046<Spi> {
     /// THe SPI device interface
-    spi: SPI,
+    spi: Spi,
     /// Current driver state
     screen_state: TouchScreenState,
     /// Buffer for the touch measurement samples
@@ -165,11 +172,11 @@ pub struct Xpt2046<SPI> {
     calibration_data: CalibrationData,
 }
 
-impl<SPI> Xpt2046<SPI>
+impl<Spi> Xpt2046<Spi>
 where
-    SPI: SpiDevice<u8>,
+    Spi: SpiDevice<u8>,
 {
-    pub fn new(spi: SPI, calibration_data: &CalibrationData) -> Self {
+    pub fn new(spi: Spi, calibration_data: &CalibrationData) -> Self {
         Self {
             spi,
             screen_state: TouchScreenState::IDLE,
@@ -183,13 +190,13 @@ where
     }
 }
 
-impl<SPI, SPIError> Xpt2046<SPI>
+impl<Spi, SpiError> Xpt2046<Spi>
 where
-    SPI: SpiDevice<u8, Error = SPIError>,
-    SPIError: Debug,
+    Spi: SpiDevice<u8, Error = SpiError>,
+    SpiError: Debug,
 {
     /// Read position.
-    fn read_position(&mut self) -> Result<Point, SPIError> {
+    fn read_position(&mut self) -> Result<Point, SpiError> {
         let mut read_position_spi_rx_buf = [0; READ_POSITION_SPI_BUF_LEN];
 
         self.spi
@@ -236,13 +243,13 @@ where
     }
 
     /// Reset the driver and preload tx buffer with register data. The unused
-    /// parameter _irq is included aso that IRQError type parameter will be
+    /// parameter _irq is included aso that IrqError type parameter will be
     /// accepted, allowing the init, run and calibrate functions to return the
     /// same error type.
-    pub fn init<IRQ, IRQError>(&mut self, _irq: &mut IRQ) -> Result<(), Error<SPIError, IRQError>>
+    pub fn init<Irq, IrqError>(&mut self, _irq: &mut Irq) -> Result<(), Error<SpiError, IrqError>>
     where
-        IRQ: InputPin<Error = IRQError>,
-        IRQError: Debug,
+        Irq: InputPin<Error = IrqError>,
+        IrqError: Debug,
     {
         // Make a throwaway position measurement so that the internal voltage
         // reference is disabled and PENIRQ is enabled.
@@ -254,10 +261,10 @@ where
     /// Continually runs and and collects the touch data from XPT2046.
     /// You should drive this either in some main loop or dedicated timer
     /// interrupt.
-    pub fn run<IRQ, IRQError>(&mut self, irq: &mut IRQ) -> Result<(), Error<SPIError, IRQError>>
+    pub fn run<Irq, IrqError>(&mut self, irq: &mut Irq) -> Result<(), Error<SpiError, IrqError>>
     where
-        IRQ: InputPin<Error = IRQError>,
-        IRQError: Debug,
+        Irq: InputPin<Error = IrqError>,
+        IrqError: Debug,
     {
         match self.screen_state {
             TouchScreenState::IDLE => {
