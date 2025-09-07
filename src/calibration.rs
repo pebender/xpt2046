@@ -1,3 +1,16 @@
+//! This module contains functions for calculating the X and Y measurement
+//! calibration data ([`super::CalibrationData`]) as well as a function for
+//! running the calibration procedure.
+//!
+//! The calibration uses the three-point calibration algorithm from "SLYT277:
+//! Calibration in Touch-Screen Systems" by Texas Instruments
+//! (<https://www.ti.com/lit/an/slyt277/slyt277.pdf>). The algorithm assumes the
+//! display panel and touch panel may be misaligned such that the touch panel
+//! may be translated, rotated, and scaled relative to the display panel.//! The
+//! algorithm uses three known display panel points along with the three
+//! measured touch panel points corresponding to the the three known display
+//! panel points.
+
 use super::CalibrationData;
 use super::{Error, Xpt2046};
 use core::fmt::Debug;
@@ -13,6 +26,7 @@ use embedded_hal::{delay::DelayNs, digital::InputPin, spi::SpiDevice};
 #[cfg(feature = "defmt")]
 use defmt::Format;
 
+/// The error returned when an error occurs in [`run_calibration()`].
 #[cfg_attr(feature = "defmt", derive(Format))]
 #[derive(Debug)]
 pub enum CalibrationRunError<SpiError, IrqError, DTError> {
@@ -21,6 +35,7 @@ pub enum CalibrationRunError<SpiError, IrqError, DTError> {
     Calibration(CalibrationError),
 }
 
+/// The error returned when an error occurs in [`calculate_calibration_data()`].
 #[cfg_attr(feature = "defmt", derive(Format))]
 #[derive(Debug)]
 pub enum CalibrationError {
@@ -33,6 +48,8 @@ pub enum CalibrationError {
     DeltaY,
 }
 
+/// The three calibration points for either the display panel or the touch
+/// panel.
 #[cfg_attr(feature = "defmt", derive(Format))]
 #[derive(Debug)]
 pub struct CalibrationPoints {
@@ -41,6 +58,11 @@ pub struct CalibrationPoints {
     pub c: Point,
 }
 
+/// The transform performed on the XPT2046's X and Y axes so that it has the
+/// same orientation as the display's X and Y axes.
+///
+/// It is used in by [`estimate_calibration_data()`] in conjunction with the
+/// display size to create an estimate of [`super::CalibrationData`].
 #[cfg_attr(feature = "defmt", derive(Format))]
 #[derive(Debug)]
 pub struct Transform {
@@ -66,14 +88,15 @@ impl Transform {
 ///
 /// The function makes only a coarse estimate. It assumes the only differences
 /// between the display panel and touch panel are their understanding of the
-/// labeling, orientation and scale of the X and Y axes. It assumes the display
-/// panel and touch panel are exactly the same size, are perfectly aligned and
-/// use the full range of the X and Y axes values.
+/// orientation and scale of the X and Y axes. It assumes the display panel and
+/// touch panel are exactly the same size, are perfectly aligned and use the
+/// full range of the X and Y axes values.
 ///
-/// The intention of the estimated calibration data it to make it possible for
-/// the user to initiate the calibration process. Is is expected that after the
-/// calibration process has been completed successfully, the device will use the
-/// store and use the calibration data from the successful calibration process.
+/// The intention of the providing estimated calibration data it to make it
+/// possible to initiate the calibration process using a device's touch display
+/// before the touch display has been calibrated. Is is expected that after the
+/// calibration process has been completed successfully, the device will store
+/// and use the calibration data from the successful calibration process.
 pub fn estimate_calibration_data(transform: Transform, display_size: Size) -> CalibrationData {
     const TOUCH_SIZE: f32 = 4096.0;
 
@@ -112,20 +135,22 @@ pub fn estimate_calibration_data(transform: Transform, display_size: Size) -> Ca
     calibration_data
 }
 
-// This function creates three independent calibration points are created based
-// on the position and size of the draw target.
-//
-// +-------+-------+-------+-------+
-// |       |       |       |       |
-// +-------a-------+-------+-------+
-// |       |       |       |       |
-// +-------+-------+-------c-------+
-// |       |       |       |       |
-// +-------+-------b-------+-------+
-// |       |       |       |       |
-// +-------+-------+-------+-------+
-//
-pub fn create_calibration_points(display_size: Size) -> CalibrationPoints {
+/// This function generates the three display calibration points.
+///
+/// The points depend on the size (in pixels) of the display panel. The points
+/// are chosen as shown below. They are chosen to provide reasonable coverage of
+/// the display panel. They are chosen such that their is a very good chance
+/// they will result in three linearly independent equations as required by
+/// three-point calibration algorithm.
+///
+/// ```rust
+/// CalibrationPoints {
+///   a: Point {x: 1 * display_size.width / 4, 1 * y: display_size.heigh / 4 },
+///   b: Point {x: 2 * display_size.width / 4, 3 * y: display_size.heigh / 4 },
+///   c: Point {x: 3 * display_size.width / 4, 2 * y: display_size.heigh / 4 },
+/// }
+/// ```
+pub fn generate_display_calibration_points(display_size: Size) -> CalibrationPoints {
     let x = display_size.width as i32 / 4;
     let y = display_size.height as i32 / 4;
     CalibrationPoints {
@@ -135,7 +160,11 @@ pub fn create_calibration_points(display_size: Size) -> CalibrationPoints {
     }
 }
 
-/// This function uses the three-point calibration algorithm from "SLYT277:
+/// This function calculates the [`super::CalibrationData`] from the display
+/// panel calibration points and corresponding measured touch panel calibration
+/// points.
+///
+/// uses the three-point calibration algorithm from "SLYT277:
 /// Calibration in Touch-Screen Systems" by Texas Instruments
 /// <https://www.ti.com/lit/an/slyt277/slyt277.pdf>.
 pub fn calculate_calibration_data(
@@ -209,28 +238,6 @@ pub fn calculate_calibration_data(
     })
 }
 
-pub fn draw_calibration_point<DT>(draw_target: &mut DT, point: &Point) -> Result<(), DT::Error>
-where
-    DT: DrawTarget<Color: RgbColor>,
-{
-    draw_target.clear(DT::Color::BLACK)?;
-
-    Line::new(
-        Point::new(point.x - 4, point.y),
-        Point::new(point.x + 4, point.y),
-    )
-    .into_styled(PrimitiveStyle::with_stroke(DT::Color::WHITE, 1))
-    .draw(draw_target)?;
-    Line::new(
-        Point::new(point.x, point.y - 4),
-        Point::new(point.x, point.y + 4),
-    )
-    .into_styled(PrimitiveStyle::with_stroke(DT::Color::WHITE, 1))
-    .draw(draw_target)?;
-
-    Ok(())
-}
-
 pub fn run_calibration<SPI, SPIError, IRQ, IRQError, DT, DTError, DELAY>(
     touch: &mut Xpt2046<SPI>,
     irq: &mut IRQ,
@@ -246,7 +253,7 @@ where
     DTError: Debug,
     DELAY: DelayNs,
 {
-    let display_cp = create_calibration_points(draw_target.bounding_box().size);
+    let display_cp = generate_display_calibration_points(draw_target.bounding_box().size);
 
     let mut touch_cp = CalibrationPoints {
         a: Point::zero(),
@@ -335,4 +342,26 @@ where
     }
 
     calibration_data.map_err(|e| CalibrationRunError::Calibration(e))
+}
+
+fn draw_calibration_point<DT>(draw_target: &mut DT, point: &Point) -> Result<(), DT::Error>
+where
+    DT: DrawTarget<Color: RgbColor>,
+{
+    draw_target.clear(DT::Color::BLACK)?;
+
+    Line::new(
+        Point::new(point.x - 4, point.y),
+        Point::new(point.x + 4, point.y),
+    )
+    .into_styled(PrimitiveStyle::with_stroke(DT::Color::WHITE, 1))
+    .draw(draw_target)?;
+    Line::new(
+        Point::new(point.x, point.y - 4),
+        Point::new(point.x, point.y + 4),
+    )
+    .into_styled(PrimitiveStyle::with_stroke(DT::Color::WHITE, 1))
+    .draw(draw_target)?;
+
+    Ok(())
 }
