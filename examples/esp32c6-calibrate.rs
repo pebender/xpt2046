@@ -32,16 +32,17 @@ use esp_hal::{
 use mipidsi;
 use static_cell::StaticCell;
 
-#[cfg(feature = "log")]
-use esp_println::logger::init_logger_from_env;
-
 #[cfg(feature = "defmt")]
 #[allow(unused_imports)]
-use defmt::{debug, error, info, trace, warn};
+use defmt::{debug, error, info, println, trace, warn};
 
 #[cfg(feature = "log")]
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
+
+#[cfg(feature = "log")]
+#[allow(unused_imports)]
+use esp_println::println;
 
 // The embassy-executor main sets up shared hardware resources, resulting in
 // structs that represent the hardware. main shares references to these structs
@@ -65,7 +66,7 @@ esp_bootloader_esp_idf::esp_app_desc!();
 #[esp_hal_embassy::main]
 async fn main(spawner: Spawner) -> ! {
     #[cfg(feature = "log")]
-    init_logger_from_env();
+    esp_println::logger::init_logger_from_env();
 
     let config = esp_hal::Config::default().with_cpu_clock(esp_hal::clock::CpuClock::max());
     let peripherals = esp_hal::init(config);
@@ -150,10 +151,10 @@ async fn main(spawner: Spawner) -> ! {
         let calibration_data = run_calibration(&mut touch, &mut touch_irq, &mut lcd, &mut delay);
         match calibration_data {
             Ok(v) => {
-                defmt::println!("{:?}", v);
+                println!("{:?}", v);
                 touch.set_calibration_data(&v);
             }
-            Err(e) => defmt::println!("{:?}", e),
+            Err(e) => println!("{:?}", e),
         }
         Timer::after_secs(5).await;
     }

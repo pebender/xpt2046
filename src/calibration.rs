@@ -128,8 +128,6 @@ pub fn estimate_calibration_data(
         calibration_data.delta_x += display_size.width as f32;
     }
 
-    defmt::info!("calibration estimate: {:?}", calibration_data);
-
     calibration_data
 }
 

@@ -19,6 +19,18 @@ mod app {
     use esp_hal::gpio::{Event, Input, InputConfig, Level, Output, OutputConfig, Pull};
     use esp_hal::{spi::master::Spi, Blocking};
 
+    #[cfg(feature = "defmt")]
+    #[allow(unused_imports)]
+    use defmt::{debug, error, info, println, trace, warn};
+
+    #[cfg(feature = "log")]
+    #[allow(unused_imports)]
+    use log::{debug, error, info, trace, warn};
+
+    #[cfg(feature = "log")]
+    #[allow(unused_imports)]
+    use esp_println::println;
+
     type TouchSpi<'a> =
         embedded_hal_bus::spi::ExclusiveDevice<Spi<'a, Blocking>, Output<'a>, Delay>;
     #[shared]
@@ -96,14 +108,11 @@ mod app {
                     touch_drv.lock(|drv| {
                         match drv.run(irq) {
                             Ok(_) => {}
-                            Err(e) => defmt::error!("{:?}", e),
+                            Err(e) => error!("{:?}", e),
                         }
                         if drv.is_touched() {
-                            #[cfg(feature = "defmt")]
-                            {
-                                let p = drv.get_touch_point();
-                                defmt::println!("x:{} y:{}", p.x, p.y);
-                            }
+                            let p = drv.get_touch_point();
+                            info!("x:{} y:{}", p.x, p.y);
                         }
                     });
                 }

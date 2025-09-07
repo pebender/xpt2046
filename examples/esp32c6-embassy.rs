@@ -38,16 +38,17 @@ use static_cell::StaticCell;
 #[cfg(feature = "defmt")]
 use defmt::Format;
 
-#[cfg(feature = "log")]
-use esp_println::logger::init_logger_from_env;
-
 #[cfg(feature = "defmt")]
 #[allow(unused_imports)]
-use defmt::{debug, error, info, trace, warn};
+use defmt::{debug, error, info, println, trace, warn};
 
 #[cfg(feature = "log")]
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
+
+#[cfg(feature = "log")]
+#[allow(unused_imports)]
+use esp_println::println;
 
 use esp_hal::peripherals::{
     GPIO16 as GPIO_LCD_CS, GPIO17 as GPIO_TOUCH_CS, GPIO18 as GPIO_TOUCH_IRQ,
@@ -99,7 +100,7 @@ esp_bootloader_esp_idf::esp_app_desc!();
 #[esp_hal_embassy::main]
 async fn main(spawner: Spawner) -> ! {
     #[cfg(feature = "log")]
-    init_logger_from_env();
+    esp_println::logger::init_logger_from_env();
 
     let config = esp_hal::Config::default().with_cpu_clock(esp_hal::clock::CpuClock::max());
     let peripherals = esp_hal::init(config);

@@ -17,6 +17,14 @@ mod app {
         timer::Delay,
     };
 
+    #[cfg(feature = "defmt")]
+    #[allow(unused_imports)]
+    use defmt::{debug, error, info, trace, warn};
+
+    #[cfg(feature = "log")]
+    #[allow(unused_imports)]
+    use log::{debug, error, info, trace, warn};
+
     type TouchSpi = embedded_hal_bus::spi::ExclusiveDevice<
         Spi<SPI1>,
         Pin<'A', 4, Output>,
@@ -128,11 +136,8 @@ mod app {
                     }
                 });
                 if drv.is_touched() {
-                    #[cfg(feature = "defmt")]
-                    {
-                        let p = drv.get_touch_point();
-                        defmt::println!("x:{} y:{}", p.x, p.y);
-                    }
+                    let p = drv.get_touch_point();
+                    info!("x:{} y:{}", p.x, p.y);
                 }
             });
             delay.delay_ms(1u32);
