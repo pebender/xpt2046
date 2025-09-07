@@ -188,7 +188,7 @@ where
         Ok(Point::new(x, y))
     }
 
-    pub(crate) fn get_touch_point_raw(&self) -> Point {
+    pub fn get_touch_point_raw(&self) -> Point {
         self.ts.average()
     }
 
