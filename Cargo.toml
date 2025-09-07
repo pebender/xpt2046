@@ -14,8 +14,10 @@ repository = "https://github.com/pebender/xpt2046"
 name = "xpt2046"
 
 [features]
-default = ["defmt"]
+default = ["calibration", "calibration_run", "defmt"]
 off = ["log", "log/max_level_off"]
+calibration = []
+calibration_run = ["calibration"]
 defmt = [
     "dep:defmt",
     "embassy-embedded-hal/defmt",
@@ -61,7 +63,7 @@ esp-bootloader-esp-idf = { version = "0.2.0", features = ["esp32c6"] }
 esp-hal = { version = "=1.0.0-rc.0", features = ["esp32c6", "unstable"] }
 esp-hal-embassy = { version = "0.9.0", features = ["esp32c6"] }
 esp-println = { version = "0.15.0", features = ["esp32c6", "auto"] }
-mipidsi = { version = "0.9.1", git="https://github.com/pebender/mipidsi", rev = "a81f32447c1d1e7fbce265ccd46b668453aef720" }
+mipidsi = { version = "0.9.1", git = "https://github.com/pebender/mipidsi", rev = "a81f32447c1d1e7fbce265ccd46b668453aef720" }
 static_cell = { version = "2.1.1" }
 
 [target.thumbv7em-none-eabihf.dev-dependencies]

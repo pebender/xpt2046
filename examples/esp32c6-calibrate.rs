@@ -8,6 +8,8 @@
 #![no_std]
 #![no_main]
 
+use xpt2046::{calibration::*, calibration_run::*, driver::*};
+
 use esp_backtrace as _;
 use esp_println as _;
 
@@ -27,7 +29,7 @@ use esp_hal::{
     time::Rate,
     Blocking,
 };
-use mipidsi::{models::ILI9341Rgb565, options::ColorOrder, options::Orientation};
+use mipidsi;
 use static_cell::StaticCell;
 
 #[cfg(feature = "log")]
@@ -114,10 +116,10 @@ async fn main(spawner: Spawner) -> ! {
     let mut lcd_backlight = Output::new(lcd_backlight, Level::Low, OutputConfig::default());
     let lcd_reset = Output::new(lcd_reset, Level::Low, OutputConfig::default());
     let mut delay = Delay;
-    let mut lcd = mipidsi::Builder::new(ILI9341Rgb565, lcd_interface)
+    let mut lcd = mipidsi::Builder::new(mipidsi::models::ILI9341Rgb565, lcd_interface)
         .display_size(240, 320)
-        .orientation(Orientation::new().flip_horizontal())
-        .color_order(ColorOrder::Bgr)
+        .orientation(mipidsi::options::Orientation::new().flip_horizontal())
+        .color_order(mipidsi::options::ColorOrder::Bgr)
         .reset_pin(lcd_reset)
         .init(&mut delay)
         .unwrap();
@@ -136,17 +138,16 @@ async fn main(spawner: Spawner) -> ! {
 
     let mut touch_irq = Input::new(touch_irq, InputConfig::default().with_pull(Pull::Up));
 
-    let mut touch = xpt2046::Xpt2046::new(
+    let mut touch = Xpt2046::new(
         touch_spi_device,
-        &xpt2046::calibration::estimate_calibration_data(
-            xpt2046::calibration::Transform::new(false, true, false),
-            xpt2046::Size::new(240, 320),
+        &estimate_calibration_data(
+            RelativeOrientation::new(false, true, false),
+            Size::new(240, 320),
         ),
     );
 
     loop {
-        let calibration_data =
-            xpt2046::calibration::run_calibration(&mut touch, &mut touch_irq, &mut lcd, &mut delay);
+        let calibration_data = run_calibration(&mut touch, &mut touch_irq, &mut lcd, &mut delay);
         match calibration_data {
             Ok(v) => {
                 defmt::println!("{:?}", v);
