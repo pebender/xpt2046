@@ -233,6 +233,9 @@ where
         // reference is disabled and PENIRQ is enabled.
         _ = self.read_position().map_err(|e| Error::Spi(e))?;
 
+        self.ts.counter = 0;
+        self.screen_state = TouchScreenState::IDLE;
+
         Ok(())
     }
 
