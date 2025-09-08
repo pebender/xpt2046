@@ -217,7 +217,7 @@ where
     /// Sometimes the TOUCHED state needs to be cleared
     pub fn clear_touch(&mut self) {
         self.ts.counter = 0;
-        self.screen_state = TouchScreenState::PRESAMPLING;
+        self.screen_state = TouchScreenState::IDLE;
     }
 
     /// Reset the driver and preload tx buffer with register data. The unused
