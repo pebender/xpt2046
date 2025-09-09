@@ -188,7 +188,11 @@ async fn touch_task(
 
     let mut touch_irq = Input::new(touch_irq, InputConfig::default().with_pull(Pull::Up));
 
-    let mut touch = Xpt2046::new(touch_spi_device);
+    let calibration_data = estimate_calibration_data(
+        RelativeOrientation::new(false, true, false),
+        Size::new(240, 320),
+    );
+    let mut touch = Xpt2046::new(touch_spi_device, &calibration_data);
 
     touch.init().unwrap();
     touch.clear_touch();
@@ -198,7 +202,10 @@ async fn touch_task(
             touch.run(&mut touch_irq).unwrap();
             if touch.is_touched() {
                 let point = touch.get_touch_point();
-                lcd_command_sender.send(LcdCommand::TouchPoint(point)).await;
+
+                if point.x >= 0 && point.x < 240 && point.y >= 0 && point.y < 320 {
+                    lcd_command_sender.send(LcdCommand::TouchPoint(point)).await;
+                }
             }
             Timer::after_micros(500).await;
         }
@@ -245,26 +252,14 @@ async fn lcd_task(
     lcd.clear(Rgb565::CSS_BLACK).unwrap();
     lcd_backlight.set_high();
 
-    let calibration_data = estimate_calibration_data(
-        RelativeOrientation::new(false, true, false),
-        Size::new(240, 320),
-    );
-
     let dot = primitives::Rectangle::new(geometry::Point::zero(), geometry::Size::new_equal(1))
         .into_styled(primitives::PrimitiveStyle::with_fill(Rgb565::CSS_WHITE));
 
     loop {
         match lcd_command_receiver.receive().await {
             LcdCommand::Clear => lcd.clear(Rgb565::CSS_BLACK).unwrap(),
-            LcdCommand::TouchPoint(touch_point) => {
-                let display_point = apply_calibration_data(&touch_point, &calibration_data);
-                if display_point.x >= 0
-                    && display_point.x < 240
-                    && display_point.y >= 0
-                    && display_point.y < 320
-                {
-                    dot.translate(display_point).draw(&mut lcd).unwrap();
-                }
+            LcdCommand::TouchPoint(point) => {
+                dot.translate(point).draw(&mut lcd).unwrap();
             }
         }
     }

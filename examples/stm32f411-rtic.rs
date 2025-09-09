@@ -7,7 +7,7 @@ use panic_halt as _;
 
 #[rtic::app(device = stm32f4xx_hal::pac)]
 mod app {
-    use xpt2046::driver::*;
+    use xpt2046::{calibration::*, driver::*};
 
     use stm32f4xx_hal::{
         gpio::{Edge, Input, Output, Pin},
@@ -97,7 +97,11 @@ mod app {
         touch_irq.enable_interrupt(&mut touch_exti);
 
         // Set up touch driver.
-        let mut touch_drv = Xpt2046::new(touch_spi_device);
+        let calibration_data = estimate_calibration_data(
+            RelativeOrientation::new(false, true, false),
+            Size::new(240, 320),
+        );
+        let mut touch_drv = Xpt2046::new(touch_spi_device, &calibration_data);
         touch_drv.init().unwrap();
         touch_drv.clear_touch();
 
