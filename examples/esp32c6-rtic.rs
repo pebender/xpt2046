@@ -12,7 +12,7 @@ esp_bootloader_esp_idf::esp_app_desc!();
 
 #[rtic::app(device = esp32c6, dispatchers=[FROM_CPU_INTR0, FROM_CPU_INTR1])]
 mod app {
-    use xpt2046::{calibration::*, driver::*};
+    use xpt2046::driver::*;
 
     use esp_backtrace as _;
     use esp_hal::delay::Delay;
@@ -78,14 +78,8 @@ mod app {
         touch_irq.listen(Event::FallingEdge);
 
         // Set up touch device.
-        let mut touch_drv = Xpt2046::new(
-            touch_spi_device,
-            &estimate_calibration_data(
-                RelativeOrientation::new(false, true, false),
-                Size::new(240, 320),
-            ),
-        );
-        touch_drv.init(&mut touch_irq).unwrap();
+        let mut touch_drv = Xpt2046::new(touch_spi_device);
+        touch_drv.init().unwrap();
         touch_drv.clear_touch();
 
         (

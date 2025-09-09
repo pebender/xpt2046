@@ -14,7 +14,7 @@
 //! While these functions were created to provide calibration data for the
 //! Xpt2046 driver, they are not specific to the Xpt2046 driver.
 
-use super::driver::{CalibrationData, Point, Size};
+use super::driver::{Point, Size};
 use core::fmt::Debug;
 #[cfg(feature = "defmt")]
 use defmt::Format;
@@ -32,6 +32,17 @@ pub enum CalibrationError {
     DeltaY,
 }
 
+#[cfg_attr(feature = "defmt", derive(Format))]
+#[derive(Debug, Clone, Copy)]
+pub struct CalibrationData {
+    pub alpha_x: f32,
+    pub beta_x: f32,
+    pub delta_x: f32,
+    pub alpha_y: f32,
+    pub beta_y: f32,
+    pub delta_y: f32,
+}
+
 /// The three calibration points for either the display panel or the touch
 /// panel.
 #[cfg_attr(feature = "defmt", derive(Format))]
@@ -46,7 +57,7 @@ pub struct CalibrationPoints {
 /// display's X and Y axes.
 ///
 /// It is used by [`estimate_calibration_data()`] in conjunction with the
-/// display size to create an estimate of [`crate::driver::CalibrationData`].
+/// display size to create an estimate of [`CalibrationData`].
 #[cfg_attr(feature = "defmt", derive(Format))]
 #[derive(Debug)]
 pub struct RelativeOrientation {
@@ -231,4 +242,15 @@ pub fn calculate_calibration_data(
         beta_y,
         delta_y,
     })
+}
+
+/// Applies calibration data to the touch point.
+pub fn apply_calibration_data(touch_point: &Point, calibration_data: &CalibrationData) -> Point {
+    let x = touch_point.x as f32;
+    let y = touch_point.y as f32;
+    let x = calibration_data.alpha_x * x + calibration_data.beta_x * y + calibration_data.delta_x;
+    let y = calibration_data.alpha_y * x + calibration_data.beta_y * y + calibration_data.delta_y;
+    let x = x as i32;
+    let y = y as i32;
+    Point::new(x, y)
 }

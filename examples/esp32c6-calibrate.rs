@@ -139,25 +139,28 @@ async fn main(spawner: Spawner) -> ! {
 
     let mut touch_irq = Input::new(touch_irq, InputConfig::default().with_pull(Pull::Up));
 
-    let mut touch = Xpt2046::new(
-        touch_spi_device,
-        &estimate_calibration_data(
-            RelativeOrientation::new(false, true, false),
-            Size::new(240, 320),
-        ),
-    );
+    let mut touch = Xpt2046::new(touch_spi_device);
 
     touch.init().unwrap();
     touch.clear_touch();
+
+    let mut calibration_data = estimate_calibration_data(
+        RelativeOrientation::new(false, true, false),
+        Size::new(240, 320),
+    );
+    debug!("{:?}", calibration_data);
     loop {
-        let calibration_data = run_calibration(&mut touch, &mut touch_irq, &mut lcd, &mut delay);
-        match calibration_data {
-            Ok(v) => {
-                println!("{:?}", v);
-                touch.set_calibration_data(&v);
+        calibration_data = match run_calibration(&mut touch, &mut touch_irq, &mut lcd, &mut delay) {
+            Ok(v) => v,
+            Err(e) => {
+                warn!("{:?}", e);
+                estimate_calibration_data(
+                    RelativeOrientation::new(false, true, false),
+                    Size::new(240, 320),
+                )
             }
-            Err(e) => println!("{:?}", e),
-        }
+        };
+        debug!("{:?}", calibration_data);
         Timer::after_secs(5).await;
     }
 }

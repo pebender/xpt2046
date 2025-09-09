@@ -390,17 +390,6 @@ pub enum Error<SpiError, IrqError> {
     Irq(IrqError),
 }
 
-#[cfg_attr(feature = "defmt", derive(Format))]
-#[derive(Debug, Clone, Copy)]
-pub struct CalibrationData {
-    pub alpha_x: f32,
-    pub beta_x: f32,
-    pub delta_x: f32,
-    pub alpha_y: f32,
-    pub beta_y: f32,
-    pub delta_y: f32,
-}
-
 /// Current state of the driver
 #[cfg_attr(feature = "defmt", derive(Format))]
 #[derive(Debug, PartialEq)]
@@ -471,8 +460,6 @@ pub struct Xpt2046<Spi> {
     screen_state: TouchScreenState,
     /// Buffer for the touch measurement samples
     ts: TouchSamples,
-    /// Calibration data for transforming touch measurements into display pixel positions.
-    calibration_data: CalibrationData,
 }
 
 impl<Spi, SpiError> Xpt2046<Spi>
@@ -480,12 +467,11 @@ where
     Spi: SpiDevice<u8, Error = SpiError>,
     SpiError: Debug,
 {
-    pub fn new(spi: Spi, calibration_data: &CalibrationData) -> Self {
+    pub fn new(spi: Spi) -> Self {
         Self {
             spi,
             screen_state: TouchScreenState::IDLE,
             ts: TouchSamples::default(),
-            calibration_data: *calibration_data,
         }
     }
 
@@ -499,11 +485,6 @@ where
         self.screen_state = TouchScreenState::IDLE;
 
         Ok(())
-    }
-
-    /// Sets the calibration data used by [`Self::get_touch_point()`]
-    pub fn set_calibration_data(&mut self, calibration_data: &CalibrationData) {
-        self.calibration_data = *calibration_data;
     }
 
     /// Continually runs and and collects the touch data from XPT2046.
@@ -550,25 +531,8 @@ where
         Ok(())
     }
 
-    pub fn get_touch_point_raw(&self) -> Point {
-        self.ts.average()
-    }
-
-    /// Get the actual touch point
     pub fn get_touch_point(&self) -> Point {
-        let raw_point = self.get_touch_point_raw();
-
-        let x = raw_point.x as f32;
-        let y = raw_point.y as f32;
-        let x = self.calibration_data.alpha_x * x
-            + self.calibration_data.beta_x * y
-            + self.calibration_data.delta_x;
-        let y = self.calibration_data.alpha_y * x
-            + self.calibration_data.beta_y * y
-            + self.calibration_data.delta_y;
-        let x = x as i32;
-        let y = y as i32;
-        Point::new(x, y)
+        self.ts.average()
     }
 
     /// Check if the display is currently touched

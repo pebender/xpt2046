@@ -10,10 +10,10 @@
 
 use super::{
     calibration::{
-        calculate_calibration_data, generate_display_calibration_points, CalibrationError,
-        CalibrationPoints,
+        calculate_calibration_data, generate_display_calibration_points, CalibrationData,
+        CalibrationError, CalibrationPoints,
     },
-    driver::{CalibrationData, Error, Point, Xpt2046},
+    driver::{Error, Point, Xpt2046},
 };
 use core::fmt::Debug;
 #[cfg(feature = "defmt")]
@@ -71,7 +71,7 @@ where
             .map_err(|e| CalibrationRunError::Xpt2046(e))?;
         delay.delay_us(500);
     }
-    touch_cp.a = touch.get_touch_point_raw();
+    touch_cp.a = touch.get_touch_point();
     let _ = draw_target.clear(DT::Color::BLACK);
     while irq
         .is_low()
@@ -94,7 +94,7 @@ where
             .map_err(|e| CalibrationRunError::Xpt2046(e))?;
         delay.delay_us(500);
     }
-    touch_cp.b = touch.get_touch_point_raw();
+    touch_cp.b = touch.get_touch_point();
     draw_target
         .clear(DT::Color::BLACK)
         .map_err(|e| CalibrationRunError::DrawTarget(e))?;
@@ -119,7 +119,7 @@ where
             .map_err(|e| CalibrationRunError::Xpt2046(e))?;
         delay.delay_us(500);
     }
-    touch_cp.c = touch.get_touch_point_raw();
+    touch_cp.c = touch.get_touch_point();
     let _ = draw_target.clear(DT::Color::BLACK);
     while irq
         .is_low()
