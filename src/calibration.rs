@@ -177,59 +177,68 @@ pub fn calculate_calibration_data(
     display_cp: &CalibrationPoints,
     touch_cp: &CalibrationPoints,
 ) -> Result<CalibrationData, CalibrationError> {
-    let det = (touch_cp.a.x - touch_cp.c.x) * (touch_cp.b.y - touch_cp.c.y)
-        - (touch_cp.b.x - touch_cp.c.x) * (touch_cp.a.y - touch_cp.c.y);
+    let det = determinate3x3((
+        (touch_cp.a.x, touch_cp.a.y, 1),
+        (touch_cp.b.x, touch_cp.b.y, 1),
+        (touch_cp.c.x, touch_cp.c.y, 1),
+    ));
+    let det_ax1 = determinate3x3((
+        (display_cp.a.x, touch_cp.a.y, 1),
+        (display_cp.b.x, touch_cp.b.y, 1),
+        (display_cp.c.x, touch_cp.c.y, 1),
+    ));
+    let det_ax2 = determinate3x3((
+        (touch_cp.a.x, display_cp.a.x, 1),
+        (touch_cp.b.x, display_cp.b.x, 1),
+        (touch_cp.c.x, display_cp.c.x, 1),
+    ));
+    let det_ax3 = determinate3x3((
+        (touch_cp.a.x, touch_cp.a.y, display_cp.a.x),
+        (touch_cp.b.x, touch_cp.b.y, display_cp.b.x),
+        (touch_cp.c.x, touch_cp.c.y, display_cp.c.x),
+    ));
+    let det_ay1 = determinate3x3((
+        (display_cp.a.y, touch_cp.a.y, 1),
+        (display_cp.b.y, touch_cp.b.y, 1),
+        (display_cp.c.y, touch_cp.c.y, 1),
+    ));
+    let det_ay2 = determinate3x3((
+        (touch_cp.a.x, display_cp.a.y, 1),
+        (touch_cp.b.x, display_cp.b.y, 1),
+        (touch_cp.c.x, display_cp.c.y, 1),
+    ));
+    let det_ay3 = determinate3x3((
+        (touch_cp.a.x, touch_cp.a.y, display_cp.a.y),
+        (touch_cp.b.x, touch_cp.b.y, display_cp.b.y),
+        (touch_cp.c.x, touch_cp.c.y, display_cp.c.y),
+    ));
 
     if det == 0 {
         return Err(CalibrationError::All);
     }
 
-    let det_alpha_x = (display_cp.a.x - display_cp.c.x) * (touch_cp.b.y - touch_cp.c.y)
-        - (display_cp.b.x - display_cp.c.x) * (touch_cp.a.y - touch_cp.c.y);
-    let det_beta_x = (touch_cp.a.x - touch_cp.c.x) * (display_cp.b.x - display_cp.c.x)
-        - (touch_cp.b.x - touch_cp.c.x) * (display_cp.a.x - display_cp.c.x);
-    let det_delta_x = (display_cp.a.x)
-        * (touch_cp.b.x * touch_cp.c.y - touch_cp.c.x * touch_cp.b.y)
-        - (display_cp.b.x) * (touch_cp.a.x * touch_cp.c.y - touch_cp.c.x * touch_cp.a.y)
-        + (display_cp.c.x) * (touch_cp.a.x * touch_cp.b.y - touch_cp.b.x * touch_cp.a.y);
-    let det_alpha_y = (display_cp.a.y - display_cp.c.y) * (touch_cp.b.y - touch_cp.c.y)
-        - (display_cp.b.y - display_cp.c.y) * (touch_cp.a.y - touch_cp.c.y);
-    let det_beta_y = (touch_cp.a.x - touch_cp.c.x) * (display_cp.b.y - display_cp.c.y)
-        - (touch_cp.b.x - touch_cp.c.x) * (display_cp.a.y - display_cp.c.y);
-    let det_delta_y = (display_cp.a.y)
-        * (touch_cp.b.x * touch_cp.c.y - touch_cp.c.x * touch_cp.b.y)
-        - (display_cp.b.y) * (touch_cp.a.x * touch_cp.c.y - touch_cp.c.x * touch_cp.a.y)
-        + (display_cp.c.y) * (touch_cp.a.x * touch_cp.b.y - touch_cp.b.x * touch_cp.a.y);
+    let alpha_x = det_ax1 as f32 / det as f32;
+    let beta_x = det_ax2 as f32 / det as f32;
+    let delta_x = det_ax3 as f32 / det as f32;
+    let alpha_y = det_ay1 as f32 / det as f32;
+    let beta_y = det_ay2 as f32 / det as f32;
+    let delta_y = det_ay3 as f32 / det as f32;
 
-    let det = det as f32;
-    let det_alpha_x = det_alpha_x as f32;
-    let det_beta_x = det_beta_x as f32;
-    let det_delta_x = det_delta_x as f32;
-    let det_alpha_y = det_alpha_y as f32;
-    let det_beta_y = det_beta_y as f32;
-    let det_delta_y = det_delta_y as f32;
-
-    let alpha_x = det_alpha_x / det;
     if !alpha_x.is_normal() {
         return Err(CalibrationError::AlphaX);
     }
-    let beta_x = det_beta_x / det;
     if !beta_x.is_normal() {
         return Err(CalibrationError::BetaX);
     }
-    let delta_x = det_delta_x / det;
     if !delta_x.is_normal() {
         return Err(CalibrationError::DeltaX);
     }
-    let alpha_y = det_alpha_y / det;
     if !alpha_y.is_normal() {
         return Err(CalibrationError::AlphaY);
     }
-    let beta_y = det_beta_y / det;
     if !beta_y.is_normal() {
         return Err(CalibrationError::BetaY);
     }
-    let delta_y = det_delta_y / det;
     if !delta_y.is_normal() {
         return Err(CalibrationError::DeltaY);
     }
@@ -242,6 +251,20 @@ pub fn calculate_calibration_data(
         beta_y,
         delta_y,
     })
+}
+
+fn determinate3x3(a: ((i32, i32, i32), (i32, i32, i32), (i32, i32, i32))) -> i32 {
+    let ((a_1_1, a_1_2, a_1_3), (a_2_1, a_2_2, a_2_3), (a_3_1, a_3_2, a_3_3)) = a;
+
+    a_1_1 * determinate2x2(((a_2_2, a_2_3), (a_3_2, a_3_3)))
+        - a_1_2 * determinate2x2(((a_2_1, a_2_3), (a_3_1, a_3_3)))
+        + a_1_3 * determinate2x2(((a_2_1, a_2_2), (a_3_1, a_3_2)))
+}
+
+fn determinate2x2(a: ((i32, i32), (i32, i32))) -> i32 {
+    let ((a_1_1, a_1_2), (a_2_1, a_2_2)) = a;
+
+    a_1_1 * a_2_2 - a_2_1 * a_1_2
 }
 
 /// Applies calibration data to the touch point.
