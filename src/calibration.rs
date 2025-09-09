@@ -157,7 +157,6 @@ pub fn generate_display_calibration_points(display_size: Size) -> CalibrationPoi
 }
 
 /// Calculates the calibration data used by the [`crate::driver::Xpt2046`] driver.
-///
 /// It uses the display panel calibration points along with their corresponding
 /// measured touch panel calibration points to calculate the coefficients of an
 /// affine transformation that will convert the X and Y measurements provided by

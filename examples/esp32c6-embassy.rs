@@ -196,7 +196,7 @@ async fn touch_task(
         ),
     );
 
-    touch.init(&mut touch_irq).unwrap();
+    touch.init().unwrap();
     touch.clear_touch();
     loop {
         touch_irq.wait_for_low().await;

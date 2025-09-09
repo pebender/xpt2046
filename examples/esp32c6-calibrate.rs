@@ -147,6 +147,8 @@ async fn main(spawner: Spawner) -> ! {
         ),
     );
 
+    touch.init().unwrap();
+    touch.clear_touch();
     loop {
         let calibration_data = run_calibration(&mut touch, &mut touch_irq, &mut lcd, &mut delay);
         match calibration_data {
