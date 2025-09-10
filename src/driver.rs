@@ -1,16 +1,36 @@
-//! The Xpt2046 driver.
+//! The Xpt2046 touch panel driver.
 //!
 //! The driver is for the XPT2046 Resistive Touch Screen Controller connected
-//! over an SPI interface.
+//! using SPI.
 //!
-//! The primary purpose of the driver is to read and filter the X and Y touch
-//! position measurements so that the touch panel connected to the XPT2046 can
-//! be used as pointing device for the display panel. However, the driver
-//! provides for measuring the eight values that can be measured: X-Position,
-//! Y-Position, Z1-Position, Z2-Position, TEMP0, TEMP1, VBAT and AUXIN. In
-//! addition, the driver provides for measure in pairs values that are often
-//! paired in calculations: (X-Position, Y-Position), (Z1-Position, Z2-Position)
-//! and (TEMP0, TEMP1).
+//! The driver provides the location in pixels of touches made to the touch
+//! screen connected to the XPT2046. In addition, the driver provides access to
+//! other measurements that can be made by the XPT2046.
+//!
+//! Essentially, the XPT2046 is a ADC (analog to digital converter) that can be
+//! commanded to measure the voltage of one of eight different sources using one
+//! of three reference voltages and outputting one of two different precisions.
+//!
+//! The source can be divided into position sources (X-Position, Y-Position,
+//! Z1-Position and Z2-Position) and non-position sources (TEMP0, TEMP1, VBAT
+//! and AUXIN). The driver commands the XPT2046 to measure position sources
+//! using a dual-ended (differential) voltage reference and to measure
+//! non-position sources using a single-ended internal 2.5V voltage reference.
+//! The driver commands the XPT2046 to output a 12-bit precision ADC measurement
+//! for all sources.
+//!
+//! The driver driver determines the touch location in pixels by measuring,
+//! filtering and transforming X-Position and Y-Position. An X-Position and
+//! Y-Position pair corresponds to an (x,y) location on the touch panel.
+//!
+//! Filtering is done because various sources introduce noise into individual
+//! X-Position and Y-Position voltage measurements.
+//!
+//! Transforming is done because the touch panel and display panel may not be
+//! aligned, and because the touch panel and the display may not have the same
+//! resolution. The transform is an affine transformation that transforms the
+//! (x,y) location on the touch panel into the corresponding (x,y) location on
+//! the display.
 //!
 //! Information on the operation of the XPT2046 Touch Screen Controller can be
 //! found in the XPT2046 data sheet
@@ -19,23 +39,13 @@
 use core::fmt::Debug;
 #[cfg(feature = "defmt")]
 use defmt::Format;
-pub use embedded_graphics::geometry::{Point, Size};
 use embedded_hal::{digital::InputPin, spi::SpiDevice};
 
-// For information on the operation of the XPT2046, refer to the XPT2046 data
-// sheet <https://www.snapeda.com/parts/XPT2046/Xptek/datasheet/>. The format of
-// the XPT2046 Control Byte is shown in Table 6. Per Table 6 and Table 7, it
-// consists of 1 start bit, 3 channel select bits, 1 mode bit, 1
-// single-ended/differential select bit, and 2 power down mode select bits.
-//
-// The values of READ_X_CONTROL_BYTE and READ_Y_CONTROL_BYTE have been
-// selected
-// - to enable the XPT2046 the most accurate measurements of the X and Y
-//   positions,
-// - to enable repeated, uninterrupted sequential measurements of the X and Y
-//   positions, and
-// - to enable the PENIRQ signal.
-//
+/// Re-exported from
+/// [embedded_graphics](https://docs.rs/embedded-graphics/latest/embedded_graphics/index.html)
+/// for convenience.
+pub use embedded_graphics::geometry::Point;
+
 // The start bit is set to '1' to signal the start of the byte over the SPI's
 // output serial line (MOSI). Per Table 5, a channel select value of '001' tells
 // the XPT2046 to measure the X-channel whereas a channel select value of '101'
@@ -181,30 +191,85 @@ use embedded_hal::{digital::InputPin, spi::SpiDevice};
 /// voltage reference select bit (PD1) and one PENIRQ enable/disable bit (PD0).
 /// In a Control Byte, A2-A0, MODE and SER/DER apply to the current measurement
 /// wheres PD1 and PD0 apply after the current measurement is complete.
-pub mod control_byte {
+///
+/// The XPT2046 communicates using a clocked serial interface such as SPI. The
+/// start bit signals the start of the Control Byte on the serial interface. The
+/// timing of everything associated with the Control Byte is relative to the
+/// start bit, including the timing of the measurement sent in response to the
+/// Control Byte.
+pub(super) mod control_byte {
     use core::fmt::Debug;
     #[cfg(feature = "defmt")]
     use defmt::Format;
 
-    /// Selects the channel to be measured.
+    /// Selects the channel to be measured by the measurement.
     #[cfg_attr(feature = "defmt", derive(Format))]
     #[derive(Debug)]
     pub enum ChannelSelect {
+        /// Make the X-Position measurement of the touch panel.
+        ///
+        /// The X-Position measurement along with the Y-Position measurement are
+        /// by far the two most common measurements as together the two
+        /// measurements determine the location being touched on the touch
+        /// screen.
         XPosition = 0b101,
+        /// Make the Y-Position measurement of the touch panel.
+        ///
+        /// The Y-Position measurement along with the X-Position measurement are
+        /// by far the two most common measurements as together the two
+        /// measurements determine the location being touched on the touch
+        /// screen.
         YPosition = 0b001,
+        /// Make the Z1-Position measurement of the touch panel.
+        ///
+        /// According to page 20 of the XPT2046 data sheet, the Z1-Position
+        /// measurement along with the Z2-Position measurement are collectively
+        /// known as the Pressure-Position measurements because they can be used
+        /// to make a crude estimate of the pressure being applied to the touch
+        /// screen.
         Z1Position = 0b011,
+        /// Make the Z2-Position measurement of the touch panel.
+        ///
+        /// According to page 20 of the XPT2046 data sheet, the Z2-Position
+        /// measurement along with the Z1-Position measurement are collectively
+        /// known as the Pressure-Position measurements because they can be used
+        /// to make a crude estimate of the pressure being applied to the touch
+        /// screen.
         Z2Position = 0b100,
+        /// Make the TEMP0 measurement.
+        ///
+        /// According to pages 18-19 of the XPT2046 data sheet, `TEMP0` can be
+        /// used either alone or in conjunction with `TEMP1` to estimate the
+        /// ambient temperature.
+        ///
+        /// Note: I have not been able to get a sensible temperature estimate
+        /// using the hardware I have.
         TEMP0 = 0b000,
+        /// Measure the internal temperature TEMP1 of the XPT2046.
+        ///
+        /// According to pages 18-19 of the XPT2046 data sheet, this value can
+        /// be used in conjunction with [`ChannelSelect::TEMP0`] to estimate the
+        /// ambient temperature.
+        ///
+        /// Note: I have not been able to get a sensible temperature estimate
+        /// using the hardware I have.
         TEMP1 = 0b111,
+        /// Measure the voltage level of a battery that could be connected to
+        /// the XPT2046.
         VBAT = 0b010,
+        /// Measure the voltage level of an auxiliary input that could be
+        /// connected to the XPT2046.
         AUXIN = 0b110,
     }
 
-    /// Selects the precision of the ADC measurement.
+    /// Selects the ADC precision for the measurement.
+    #[allow(dead_code)]
     #[cfg_attr(feature = "defmt", derive(Format))]
     #[derive(Debug)]
     pub enum ADCModeSelect {
+        /// Make the measurement with 12-bits of ADC precision.
         Bits12 = 0b0,
+        /// Make the measurement with 8-bits of ADC precision.
         Bits8 = 0b1,
     }
 
@@ -215,6 +280,7 @@ pub mod control_byte {
     /// measurements using a single-ended reference. The measurement of Y, Y, Z1 or
     /// Z2 can use either singled-ended or duel-ended reference. The measurement of
     /// TEMP0, TEMP1, VBAT and AUXIN can only use a single ended reference.
+    #[allow(dead_code)]
     #[cfg_attr(feature = "defmt", derive(Format))]
     #[derive(Debug)]
     pub enum SerDerSelect {
@@ -231,6 +297,7 @@ pub mod control_byte {
     /// voltage reference. Measurements of X, Y, Z1 or Z2 can use either the
     /// internal voltage reference or an external voltage reference. Measurements of
     /// TEMP0, TEMP1, VBAT and AUXIN can only use the internal voltage reference.
+    #[allow(dead_code)]
     #[cfg_attr(feature = "defmt", derive(Format))]
     #[derive(Debug)]
     pub enum InternalReferenceEnable {
@@ -239,6 +306,7 @@ pub mod control_byte {
     }
 
     // Selects whether to enable PENIRQ.
+    #[allow(dead_code)]
     #[cfg_attr(feature = "defmt", derive(Format))]
     #[derive(Debug)]
     pub enum PenIrqEnable {
@@ -264,10 +332,19 @@ pub mod control_byte {
 
     /// Builds a X2046 Control Byte delayed by three bits.
     ///
-    /// The control byte is delayed by three bits (three SPI bus clock cycles)
-    /// so 12-bit ADC measurements are byte boundary aligned. Without the three
-    /// bit delay, each returned 12-bit ADC measurement would need to be shifted
-    /// by three bits to be correctly byte boundary aligned.
+    /// The start of the measurement sent on the SPI's MISO serial line is tied
+    /// to the start of the Control Byte received on the SPI's MOSI serial line.
+    /// Specifically, the measurement starts 9 clock cycles after the start of
+    /// the Control Byte that initiated the measurement. Since the measurement
+    /// is 12-bits, that the LSB of the measurement will occur be sent 21 clock
+    /// cycles after that start bit of the Control Byte. Therefore, if the start
+    /// of the Control Byte is byte aligned, the measurement will not be byte
+    /// aligned. For the 12-bit measurement to be byte aligned, either the
+    /// transmitted Control Byte must be delayed by three bits (three clock
+    /// cycles) or the received measurement must be right-shifted by three bits.
+    /// Since the different Control Bytes used can be built and shifted at
+    /// compile time whereas each measurement would need to be shifted at
+    /// runtime, the Control Byte is shifted.
     pub const fn build_delayed_control_byte(
         channel: ChannelSelect,
         adc_mode: ADCModeSelect,
@@ -296,41 +373,17 @@ pub mod control_byte {
         /// chosen for the non-position (TEMP0, TEMP1, VBAT, AUXIN) measurements
         /// because they do not support duel-ended reference measurements.
         ///
+        /// For measurements using a single-ended reference, measurements using
+        /// the internal voltage reference are likely to be more accurate than
+        /// measurements using an external voltage reference because the value
+        /// of the internal voltage reference is known and stable. In addition,
+        /// it is possible that some hardware designs might not provide an
+        /// external voltage reference.
+        ///
         /// The PENIRQ is enabled because it allows the system to be responsive
         /// to touch input without requiring the frequent position measurements
         /// (including Z1-Position and Z2-Position) that would otherwise be
         /// needed to promptly detect touch input.
-        ///
-        /// For measurements using a single-ended reference, measurements using
-        /// the internal voltage reference are likely to be more accurate than
-        /// measurements using an external voltage reference because the value
-        /// of the internal voltage reference is known and stable. However, the
-        /// internal voltage reference consumes power. Therefore,
-        ///
-        ///
-        ///
-        /// The XPT2046 can measure eight different values. In practice, the
-        /// position measurements (X-Position, Y-Position, Z1-Position and
-        /// Z2-Position) tend to be far more common than the non-position
-        /// measurements (TEMP0, TEMP1, VBAT and AUXIN). Of the position
-        /// measurements, the X-Position and Y-Position measurements tend to be
-        /// far more common than the Z1-Position adn Z2-Position measurements.
-        /// Therefore, the driver optimizes for the X-Position and Y-Position
-        /// measurements.
-        ///
-        /// The X-Position and Y-Position benefit from the extra precision of
-        /// 12-bit ADC measurement because the extra precision enables more
-        /// precise mapping of these measurements to display pixels. Independent
-        /// of whether the an 12-bit or 8-bit ADC measurement is made, a single
-        /// measurement transaction will occupy the SPI bus for three bytes, and
-        /// a multiple measurement transaction will occupy the SPI bus for two
-        /// additional two bytes for each additional measurement. It might be
-        /// possible to use a higher SPI clock frequency when communicating with
-        /// XPT2046 were we to make only 8-bit ADC measurements.
-        ///
-        ///  not all measurements benefit from the extra precision of a
-        /// 12-bit ADC conversion, the most common measurements (X-Position and
-        /// Y-Position)
         pub const fn into_delayed_control_byte(self) -> [u8; 2] {
             let x = match self {
                 ChannelSelect::XPosition
@@ -360,7 +413,16 @@ pub mod control_byte {
 
     /// The delayed control byte used to enable the internal voltage reference.
     ///
-    /// A channel must be selected
+    /// Normally, driver disables the internal voltage reference because it is
+    /// not used for position measurements and it consumes power. For
+    /// non-position measurements, the driver uses `INTERNAL_REFERENCE_ENABLE`
+    /// to enable the internal reference before making the measurement(s) and
+    /// uses [`INTERNAL_REFERENCE_DISABLE`] to disable the internal reference
+    /// after making the measurement(s)
+    ///
+    /// Since every Control Byte must trigger some measurement,
+    /// `INTERNAL_REFERENCE_ENABLE` triggers a throwaway 8-bit, single-ended
+    /// measurement of TEMP0.
     pub const INTERNAL_REFERENCE_ENABLE: [u8; 2] = build_delayed_control_byte(
         ChannelSelect::TEMP0,
         ADCModeSelect::Bits8,
@@ -370,6 +432,17 @@ pub mod control_byte {
     );
 
     /// The delayed control byte used to disable the internal voltage reverence.
+    ///
+    /// Normally, driver disables the internal voltage reference because it is
+    /// not used for position measurements and it consumes power. For
+    /// non-position measurements, the driver uses [`INTERNAL_REFERENCE_ENABLE`]
+    /// to enable the internal reference before making the measurement(s) and
+    /// uses `INTERNAL_REFERENCE_DISABLE` to disable the internal reference
+    /// after making the measurement(s)
+    ///
+    /// Since every Control Byte must trigger some measurement,
+    /// `INTERNAL_REFERENCE_DISABLE` triggers a throwaway 8-bit, single-ended
+    /// measurement of TEMP0.
     pub const INTERNAL_REFERENCE_DISABLE: [u8; 2] = build_delayed_control_byte(
         ChannelSelect::TEMP0,
         ADCModeSelect::Bits8,
@@ -404,7 +477,7 @@ pub struct CalibrationData {
 /// Current state of the driver
 #[cfg_attr(feature = "defmt", derive(Format))]
 #[derive(Debug, PartialEq)]
-pub enum TouchScreenState {
+enum TouchScreenState {
     /// Driver waits for touch
     IDLE,
     /// Driver debounces the touch
@@ -417,7 +490,7 @@ pub enum TouchScreenState {
 
 #[cfg_attr(feature = "defmt", derive(Format))]
 #[derive(Debug)]
-pub struct TouchSamples {
+struct TouchSamples {
     /// All the touch samples
     samples: [Point; MAX_SAMPLES],
     /// current number of captured samples
@@ -453,7 +526,7 @@ impl TouchSamples {
 /// The driver is for the XPT2046 Resistive Touch Screen Controller connected
 /// over an SPI interface.
 ///
-/// The primary purpose of the driver is to read and filter the X and Y touch
+/// The primary purpose of the driver is to read, filter and transform the X and Y touch
 /// position measurements so that the touch panel connected to the XPT2046 can
 /// be used as pointing device for the display panel. However, the driver
 /// provides for measuring the eight values that can be measured: X-Position,
@@ -502,13 +575,17 @@ where
     }
 
     /// Sets the calibration data used by [`Self::get_touch_point()`]
+    ///
+    /// This can be used to update the calibration data after running calibration.
     pub fn set_calibration_data(&mut self, calibration_data: &CalibrationData) {
         self.calibration_data = *calibration_data;
     }
 
-    /// Continually runs and and collects the touch data from XPT2046.
-    /// You should drive this either in some main loop or dedicated timer
-    /// interrupt.
+    /// Collects the touch position measurements.
+    ///
+    /// This should be run continually. This can be done by calling from some
+    /// main loop of some task or by calling from a timer interrupt. After
+    /// PENIRQ goes high, calling can be suspended until PENIRQ goes low again.
     pub fn run<Irq, IrqError>(&mut self, irq: &mut Irq) -> Result<(), Error<SpiError, IrqError>>
     where
         Irq: InputPin<Error = IrqError>,
@@ -606,9 +683,14 @@ where
     }
 
     /// Returns the measurements of X-Position and Y-Position as the tuple
-    /// (X,Y).
+    /// (X-Position,Y-Position).
     ///
-    /// This is by far the most common measurement made.
+    /// This measurement
+    ///
+    /// This is by far the most common measurement made. This is the measurement
+    /// [`Xpt2046::run()`] makes and filters for use in the response to
+    /// [`Xpt2046::get_touch_point_raw()`] and [`Xpt2046::get_touch_point()`].
+    ///
     pub fn measure_xy_positions(&mut self) -> Result<(u16, u16), SpiError> {
         const M0: [u8; 2] = control_byte::ChannelSelect::XPosition.into_delayed_control_byte();
         const M1: [u8; 2] = control_byte::ChannelSelect::YPosition.into_delayed_control_byte();
@@ -641,7 +723,11 @@ where
     }
 
     /// Returns the measurements of Z1-Position and Z2-Position as the tuple
-    /// (Z1,Z2).
+    /// (Z1-Position,Z2-Position).
+    ///
+    /// Some non-Rust drivers have used the difference between the Z1-Position
+    /// and Z2-Position measurements as a crude detection of the pressure being
+    /// applied to the touch screen.
     pub fn measure_z_positions(&mut self) -> Result<(u16, u16), SpiError> {
         const M0: [u8; 2] = control_byte::ChannelSelect::Z1Position.into_delayed_control_byte();
         const M1: [u8; 2] = control_byte::ChannelSelect::Z2Position.into_delayed_control_byte();
@@ -654,7 +740,14 @@ where
     }
 
     /// Returns the measurements of the X-Position, Y-Position, Z1-Position and
-    /// Z2-Position as the tuple (X,Y,Z1,Z2).
+    /// Z2-Position as the tuple
+    /// (X-Position,Y-Position,Z1-Position,Z2-Position).
+    ///
+    /// On page 20, the XPT2046 data sheet gives an equation for using the
+    /// X-Position, Z1-Position and Z2-Position measurements to calculate the
+    /// touch resistance when the X plate resistance is known (and proportional
+    /// to touch resistance when X plate resistance is not known known). It
+    /// purports this can be used as a measure of touch pressure.
     pub fn measure_xyz_positions(&mut self) -> Result<(u16, u16, u16, u16), SpiError> {
         const M0: [u8; 2] = control_byte::ChannelSelect::XPosition.into_delayed_control_byte();
         const M1: [u8; 2] = control_byte::ChannelSelect::YPosition.into_delayed_control_byte();
@@ -671,6 +764,9 @@ where
     }
 
     /// Returns the measurement of TEMP0.
+    ///
+    /// The ADC reference is a singled-ended reference using the internal 2.5V
+    /// reference. The ADC output is 12-bits.
     pub fn measure_temp0(&mut self) -> Result<u16, SpiError> {
         const RE: [u8; 2] = control_byte::INTERNAL_REFERENCE_ENABLE;
         const M0: [u8; 2] = control_byte::ChannelSelect::TEMP0.into_delayed_control_byte();
@@ -683,6 +779,9 @@ where
     }
 
     /// Returns the measurement of TEMP1.
+    ///
+    /// The ADC reference is a singled-ended reference using the internal 2.5V
+    /// reference. The ADC output is 12-bits.
     pub fn measure_temp1(&mut self) -> Result<u16, SpiError> {
         const RE: [u8; 2] = control_byte::INTERNAL_REFERENCE_ENABLE;
         const M0: [u8; 2] = control_byte::ChannelSelect::TEMP1.into_delayed_control_byte();
@@ -696,6 +795,9 @@ where
 
     /// Returns the measurements of TEMP0 and TEMP1 as the tuple
     /// (TEMP0,TEMP1).
+    ///
+    /// The ADC reference is a singled-ended reference using the internal 2.5V
+    /// reference. The ADC output is 12-bits.
     pub fn measure_temps(&mut self) -> Result<(u16, u16), SpiError> {
         const RE: [u8; 2] = control_byte::INTERNAL_REFERENCE_ENABLE;
         const M0: [u8; 2] = control_byte::ChannelSelect::TEMP0.into_delayed_control_byte();
@@ -710,6 +812,9 @@ where
     }
 
     /// Returns the measurement of VBAT.
+    ///
+    /// The ADC reference is a singled-ended reference using the internal 2.5V
+    /// reference. The ADC output is 12-bits.
     pub fn measure_vbat(&mut self) -> Result<u16, SpiError> {
         const RE: [u8; 2] = control_byte::INTERNAL_REFERENCE_ENABLE;
         const M0: [u8; 2] = control_byte::ChannelSelect::VBAT.into_delayed_control_byte();
@@ -722,6 +827,9 @@ where
     }
 
     /// Returns the measurement of AUXIN.
+    ///
+    /// The ADC reference is a singled-ended reference using the internal 2.5V
+    /// reference. The ADC output is 12-bits.
     pub fn measure_auxin(&mut self) -> Result<u16, SpiError> {
         const RE: [u8; 2] = control_byte::INTERNAL_REFERENCE_ENABLE;
         const M0: [u8; 2] = control_byte::ChannelSelect::AUXIN.into_delayed_control_byte();

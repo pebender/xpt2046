@@ -1,12 +1,13 @@
-//! Functions for running the calibration procedure for the Xpt2046.
+//! Functions for running the touch screen calibration procedure.
 //!
-//! The only requirement on the display panel used with the Xpt2046 controlled
-//! touch panel is the display panel's driver must implement the
+//! The two requirements on the touch screen are that its touch panel controller
+//! is the XPT2046, and that the software driver for its display panel
+//! controller implements the
 //! [embedded-graphics-core's](https://crates.io/crates/embedded-graphics-core)
 //! [DrawTarget](https://docs.rs/embedded-graphics-core/latest/embedded_graphics_core/draw_target/trait.DrawTarget.html)
-//! trait whose Color implements the
+//! trait with a Color type implementing the
 //! [RgbColor](https://docs.rs/embedded-graphics-core/latest/embedded_graphics_core/pixelcolor/trait.RgbColor.html)
-//! trait.
+//! trait and an Error type implementing the Debug trait.
 
 use super::{
     calibration::{
@@ -30,11 +31,15 @@ use embedded_hal::{delay::DelayNs, digital::InputPin, spi::SpiDevice};
 #[cfg_attr(feature = "defmt", derive(Format))]
 #[derive(Debug)]
 pub enum CalibrationRunError<SpiError, IrqError, DTError> {
+    /// An error occurred in the Xpt2046 touch panel driver.
     Xpt2046(Error<SpiError, IrqError>),
+    /// An error occurred in the display panel driver.
     DrawTarget(DTError),
+    /// An error occurred in the calibration calculation.
     Calibration(CalibrationError),
 }
 
+/// Runs the touch screen calibration procedure.
 pub fn run_calibration<SPI, SPIError, IRQ, IRQError, DT, DTError, DELAY>(
     touch: &mut Xpt2046<SPI>,
     irq: &mut IRQ,
@@ -141,7 +146,8 @@ where
     calibration_data.map_err(|e| CalibrationRunError::Calibration(e))
 }
 
-pub fn draw_calibration_point<DT>(draw_target: &mut DT, point: &Point) -> Result<(), DT::Error>
+/// Draws a calibration point on the touch screen.
+fn draw_calibration_point<DT>(draw_target: &mut DT, point: &Point) -> Result<(), DT::Error>
 where
     DT: DrawTarget<Color: RgbColor>,
 {

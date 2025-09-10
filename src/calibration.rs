@@ -1,23 +1,30 @@
-//! Functions for calculating the touch panel X and Y measurement calibration
-//! data.
+//! Functions for calculating the touch screen calibration data.
 //!
 //! The calibration uses the three-point calibration algorithm from "SLYT277:
 //! Calibration in Touch-Screen Systems" by Texas Instruments
 //! (<https://www.ti.com/lit/an/slyt277/slyt277.pdf>). The algorithm assumes the
-//! display panel and touch panel may be misaligned such that the touch panel
-//! may be translated, rotated, and scaled relative to the display panel. The
-//! algorithm uses three known display panel points along with three measured
-//! touch panel points corresponding to the three known display panel points to
-//! calculate the coefficients of an affine transformation from the touch panel
-//! points to the display panel points.
+//! touch panel and display panel may be misaligned causing the touch panel to
+//! be translated and/or rotated relative to the display panel. In addition, the
+//! algorithm assumes the touch panel and display panel may have different
+//! resolutions causing the X and/or Y coordinates of the touch panel to be
+//! scaled relative to the display panel. The algorithm uses three known display
+//! panel points along with three measured touch panel points corresponding to
+//! the three known display panel points to calculate the coefficients of the
+//! affine transformation that would translate the touch panel points into the
+//! display panel points.
 //!
 //! While these functions were created to provide calibration data for the
 //! Xpt2046 driver, they are not specific to the Xpt2046 driver.
 
-use super::driver::{CalibrationData, Point, Size};
+use super::driver::{CalibrationData, Point};
 use core::fmt::Debug;
 #[cfg(feature = "defmt")]
 use defmt::Format;
+
+/// Re-exported from
+/// [embedded_graphics](https://docs.rs/embedded-graphics/latest/embedded_graphics/index.html)
+/// for convenience.
+pub use embedded_graphics::geometry::Size;
 
 /// The error returned when an error occurs in [`calculate_calibration_data()`].
 #[cfg_attr(feature = "defmt", derive(Format))]

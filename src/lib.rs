@@ -1,8 +1,8 @@
-//! A platform agnostic Rust driver for XPT2046 touch controller based on the
+//! A Rust driver for the XPT2046 touch panel controller based on the
 //! [`embedded-hal`](https://github.com/rust-embedded/embedded-hal) traits.
 //!
-//! In addition, it provides functions for calculating the calibration data
-//! needed to align the touch panel position measurements with the display panel
+//! In addition to the driver, the crate provides functions for calculating the calibration data
+//! the driver uses to align the touch panel position measurements with the display panel
 //! pixel locations as well as a function for performing this calibration.
 
 // #![doc(html_root_url = "https://")]
