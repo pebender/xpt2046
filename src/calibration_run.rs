@@ -76,7 +76,7 @@ where
             .map_err(|e| CalibrationRunError::Xpt2046(e))?;
         delay.delay_us(500);
     }
-    touch_cp.a = touch.get_touch_point_raw();
+    touch_cp.a = touch.get_touch_position_raw();
     let _ = draw_target.clear(DT::Color::BLACK);
     while irq
         .is_low()
@@ -99,7 +99,7 @@ where
             .map_err(|e| CalibrationRunError::Xpt2046(e))?;
         delay.delay_us(500);
     }
-    touch_cp.b = touch.get_touch_point_raw();
+    touch_cp.b = touch.get_touch_position_raw();
     draw_target
         .clear(DT::Color::BLACK)
         .map_err(|e| CalibrationRunError::DrawTarget(e))?;
@@ -124,7 +124,7 @@ where
             .map_err(|e| CalibrationRunError::Xpt2046(e))?;
         delay.delay_us(500);
     }
-    touch_cp.c = touch.get_touch_point_raw();
+    touch_cp.c = touch.get_touch_position_raw();
     let _ = draw_target.clear(DT::Color::BLACK);
     while irq
         .is_low()

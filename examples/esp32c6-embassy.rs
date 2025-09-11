@@ -201,7 +201,7 @@ async fn touch_task(
         while touch_irq.is_low() {
             touch.run(&mut touch_irq).unwrap();
             if touch.is_touched() {
-                let point = touch.get_touch_point();
+                let point = touch.get_touch_position();
 
                 if point.x >= 0 && point.x < 240 && point.y >= 0 && point.y < 320 {
                     lcd_command_sender.send(LcdCommand::TouchPoint(point)).await;

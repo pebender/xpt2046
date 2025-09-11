@@ -134,7 +134,7 @@ mod app {
                     }
                 });
                 if drv.is_touched() {
-                    let p = drv.get_touch_point();
+                    let p = drv.get_touch_position();
                     info!("x:{} y:{}", p.x, p.y);
                 }
             });

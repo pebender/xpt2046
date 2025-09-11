@@ -49,7 +49,7 @@ pub use embedded_graphics::geometry::Point;
 /// timing of everything associated with that control byte is relative to the
 /// start bit, including the timing of the measurement sent in response to the
 /// control byte.
-pub(super) mod control_byte {
+mod control_byte {
     use core::fmt::Debug;
     #[cfg(feature = "defmt")]
     use defmt::Format;
@@ -130,7 +130,7 @@ pub(super) mod control_byte {
         Disable = 0b1,
     }
 
-    /// Builds an X2046 control byte.
+    /// Builds an XPT2046 control byte.
     pub const fn build_control_byte(
         channel: ChannelSelect,
         adc_mode: ADCModeSelect,
@@ -146,7 +146,7 @@ pub(super) mod control_byte {
             | ((penirq as u8) << 0)
     }
 
-    /// Builds an X2046 control byte delayed by three bits.
+    /// Builds an XPT2046 control byte delayed by three bits.
     ///
     /// The start of the measurement sent on the SPI's MISO serial line is tied
     /// to the start of the control byte received on the SPI's MOSI serial line.
@@ -192,7 +192,7 @@ pub(super) mod control_byte {
         ///
         /// The internal 2.5V voltage reference is disabled because it consumes
         /// power when enabled and is rarely needed. It is only needed when
-        /// making a measurement using a single-ended reference. That is, it is
+        /// making a measurement using a single-ended reference. So, it is
         /// only needed when requesting a TEMP0, TEMP1, VBAT or AUXIN
         /// measurement. Therefore, instead of leaving it enabled, the driver
         /// sends a [`INTERNAL_REFERENCE_ENABLE`] control byte before sending
@@ -205,7 +205,7 @@ pub(super) mod control_byte {
         /// measurements that would otherwise be needed to promptly detect touch
         /// input.
         pub const fn into_delayed_control_byte(self) -> [u8; 2] {
-            let x = match self {
+            match self {
                 ChannelSelect::XPosition
                 | ChannelSelect::YPosition
                 | ChannelSelect::Z1Position
@@ -226,8 +226,7 @@ pub(super) mod control_byte {
                     InternalReferenceEnable::Disable,
                     PenIrqEnable::Enable,
                 ),
-            };
-            x
+            }
         }
     }
 
@@ -236,10 +235,10 @@ pub(super) mod control_byte {
     ///
     /// Normally, the driver disables the internal 2.5V voltage reference
     /// because it consumes power and is rarely used. When it is needed, the
-    /// driver sends `INTERNAL_REFERENCE_ENABLE` to enable it.
+    /// driver sends INTERNAL_REFERENCE_ENABLE to enable it.
     ///
     /// Since every control byte must trigger some measurement,
-    /// `INTERNAL_REFERENCE_ENABLE` triggers a throwaway 8-bit, single-ended
+    /// INTERNAL_REFERENCE_ENABLE triggers a throwaway 8-bit, single-ended
     /// measurement of TEMP0.
     pub const INTERNAL_REFERENCE_ENABLE: [u8; 2] = build_delayed_control_byte(
         ChannelSelect::TEMP0,
@@ -252,6 +251,7 @@ pub(super) mod control_byte {
 
 const TOUCH_SAMPLE_BUFFER_SIZE: usize = 64;
 
+/// Error type returned by [`Xpt2046::run()`].
 #[cfg_attr(feature = "defmt", derive(Format))]
 #[derive(Debug)]
 pub enum Error<SpiError, IrqError> {
@@ -261,6 +261,21 @@ pub enum Error<SpiError, IrqError> {
     Irq(IrqError),
 }
 
+/// The touch position calibration data.
+///
+/// The driver transforms a measured touch panel position into its corresponding
+/// display panel position using the equations
+///
+/// ```rust
+/// display.x = alpha_x * touch.x + beta_x * touch.y + delta_x
+/// display.y = alpha_y * touch.y + beta_y * touch.y + delta_y
+/// ```
+///
+/// [`crate::calibration::estimate_calibration_data()`] and
+/// [`crate::calibration::calculate_calibration_data()`] to create the
+/// calibration data. [`crate::calibration_run::run_calibration()`] can be used
+/// to run a calibration routine for a touch screen and create the calibration
+/// data.
 #[cfg_attr(feature = "defmt", derive(Format))]
 #[derive(Debug, Clone, Copy)]
 pub struct CalibrationData {
@@ -301,7 +316,7 @@ struct TouchSampleBuffer {
 impl Default for TouchSampleBuffer {
     fn default() -> Self {
         Self {
-            buffer: [Point::default(); TOUCH_SAMPLE_BUFFER_SIZE],
+            buffer: [Point::zero(); TOUCH_SAMPLE_BUFFER_SIZE],
             index: 0,
         }
     }
@@ -427,16 +442,16 @@ where
         Ok(())
     }
 
-    /// Returns the touch point in XPT2046 measurement units.
+    /// Returns the touch position in XPT2046 measurement units.
     ///
     /// This is made available for use in touch screen calibration procedures.
-    pub fn get_touch_point_raw(&self) -> Point {
+    pub fn get_touch_position_raw(&self) -> Point {
         self.sample_buffer.average()
     }
 
-    /// Returns the touch point in display pixel units.
-    pub fn get_touch_point(&self) -> Point {
-        let raw_point = self.get_touch_point_raw();
+    /// Returns the touch position in display pixel units.
+    pub fn get_touch_position(&self) -> Point {
+        let raw_point = self.get_touch_position_raw();
 
         let x = raw_point.x as f32;
         let y = raw_point.y as f32;
