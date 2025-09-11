@@ -250,7 +250,7 @@ pub(super) mod control_byte {
     );
 }
 
-const MAX_SAMPLES: usize = 128;
+const MAX_SAMPLES: usize = 64;
 
 #[cfg_attr(feature = "defmt", derive(Format))]
 #[derive(Debug)]
@@ -276,11 +276,13 @@ pub struct CalibrationData {
 #[cfg_attr(feature = "defmt", derive(Format))]
 #[derive(Debug, PartialEq)]
 enum TouchScreenState {
-    /// Driver waits for touch
+    /// Waiting for a touch (waiting for PENIRQ to go low).
     IDLE,
-    /// Driver debounces the touch
-    PRESAMPLING,
-    /// Confirmed touch
+    /// Letting the touch panel settle.
+    SETTLING,
+    /// Buffering touch samples for the touch sample filter.
+    BUFFERING,
+    /// A touch has been reliably detected and filtered.
     TOUCHED,
     /// Touch released
     RELEASED,
@@ -380,10 +382,20 @@ where
             TouchScreenState::IDLE => {
                 if irq.is_low().map_err(|e| Error::Irq(e))? {
                     self.ts.counter = 0;
-                    self.screen_state = TouchScreenState::PRESAMPLING;
+                    self.screen_state = TouchScreenState::SETTLING;
                 }
             }
-            TouchScreenState::PRESAMPLING => {
+            TouchScreenState::SETTLING => {
+                if irq.is_high().map_err(|e| Error::Irq(e))? {
+                    self.screen_state = TouchScreenState::RELEASED
+                }
+                self.ts.counter += 1;
+                if self.ts.counter == MAX_SAMPLES {
+                    self.ts.counter = 0;
+                    self.screen_state = TouchScreenState::BUFFERING;
+                }
+            }
+            TouchScreenState::BUFFERING => {
                 if irq.is_high().map_err(|e| Error::Irq(e))? {
                     self.screen_state = TouchScreenState::RELEASED
                 }
