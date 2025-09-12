@@ -8,6 +8,7 @@ categories = ["embedded", "no-std", "no-std::no-alloc"]
 keywords = ["xpt2046", "embedded-hal-driver", "touch"]
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/pebender/xpt2046"
+publish = false
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [lib]
