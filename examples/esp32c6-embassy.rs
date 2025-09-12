@@ -51,9 +51,9 @@ use log::{debug, error, info, trace, warn};
 use esp_println::println;
 
 use esp_hal::peripherals::{
-    GPIO16 as GPIO_LCD_CS, GPIO17 as GPIO_TOUCH_CS, GPIO18 as GPIO_TOUCH_IRQ,
-    GPIO2 as GPIO_SPI_MISO, GPIO20 as GPIO_LCD_BACKLIGHT, GPIO21 as GPIO_LCD_RESET,
-    GPIO22 as GPIO_LCD_DC, GPIO6 as GPIO_SPI_SCLK, GPIO7 as GPIO_SPI_MOSI, SPI2 as SPI_BUS,
+    GPIO16 as GPIO_DISPLAY_CS, GPIO17 as GPIO_TOUCH_CS, GPIO18 as GPIO_TOUCH_IRQ,
+    GPIO2 as GPIO_SPI_MISO, GPIO20 as GPIO_DISPLAY_BACKLIGHT, GPIO21 as GPIO_DISPLAY_RESET,
+    GPIO22 as GPIO_DISPLAY_DC, GPIO6 as GPIO_SPI_SCLK, GPIO7 as GPIO_SPI_MOSI, SPI2 as SPI_BUS,
 };
 
 #[cfg_attr(feature = "defmt", derive(Format))]
@@ -63,17 +63,17 @@ struct PeripheralMap<'a> {
     pub spi_sclk: GPIO_SPI_SCLK<'a>,
     pub spi_mosi: GPIO_SPI_MOSI<'a>,
     pub spi_miso: GPIO_SPI_MISO<'a>,
-    pub display_cs: GPIO_LCD_CS<'a>,
-    pub display_dc: GPIO_LCD_DC<'a>,
-    pub display_reset: GPIO_LCD_RESET<'a>,
-    pub display_backlight: GPIO_LCD_BACKLIGHT<'a>,
+    pub display_cs: GPIO_DISPLAY_CS<'a>,
+    pub display_dc: GPIO_DISPLAY_DC<'a>,
+    pub display_reset: GPIO_DISPLAY_RESET<'a>,
+    pub display_backlight: GPIO_DISPLAY_BACKLIGHT<'a>,
     pub touch_cs: GPIO_TOUCH_CS<'a>,
     pub touch_irq: GPIO_TOUCH_IRQ<'a>,
 }
 
 #[cfg_attr(feature = "defmt", derive(Format))]
 #[derive(Debug)]
-enum LcdCommand {
+enum DisplayCommand {
     Clear,
     TouchPoint(geometry::Point),
 }
@@ -132,19 +132,17 @@ async fn main(spawner: Spawner) -> ! {
         &*make_static!(Mutex<CriticalSectionRawMutex, RefCell<Spi<'static, Blocking>>>, spi_bus);
 
     // Set up the channel for sending commands to the display task.
-    let display_command_channel = Channel::<CriticalSectionRawMutex, LcdCommand, 16>::new();
-    let display_command_channel =
-        &*make_static!(Channel<CriticalSectionRawMutex, LcdCommand, 16>, display_command_channel);
+    let display_command_channel = Channel::<CriticalSectionRawMutex, DisplayCommand, 16>::new();
+    let display_command_channel = &*make_static!(Channel<CriticalSectionRawMutex, DisplayCommand, 16>, display_command_channel);
 
     // Create a channel receiver to give to the display task.
     let display_command_receiver = display_command_channel.receiver();
-    let display_command_receiver =
-        &*make_static!(Receiver<CriticalSectionRawMutex, LcdCommand, 16>, display_command_receiver);
+    let display_command_receiver = &*make_static!(Receiver<CriticalSectionRawMutex, DisplayCommand, 16>, display_command_receiver);
 
     // Create a channel sender to give to the touch task.
     let display_command_sender = display_command_channel.sender();
     let display_command_sender =
-        &*make_static!(Sender<CriticalSectionRawMutex, LcdCommand, 16>, display_command_sender);
+        &*make_static!(Sender<CriticalSectionRawMutex, DisplayCommand, 16>, display_command_sender);
 
     spawner.must_spawn(display_task(
         spi_bus,
@@ -162,7 +160,7 @@ async fn main(spawner: Spawner) -> ! {
         display_command_sender,
     ));
 
-    display_command_sender.send(LcdCommand::Clear).await;
+    display_command_sender.send(DisplayCommand::Clear).await;
 
     loop {
         Timer::after_secs(60).await;
@@ -174,7 +172,7 @@ async fn touch_task(
     spi_bus: &'static Mutex<CriticalSectionRawMutex, RefCell<Spi<'static, Blocking>>>,
     touch_cs: GPIO_TOUCH_CS<'static>,
     touch_irq: GPIO_TOUCH_IRQ<'static>,
-    display_command_sender: &'static Sender<'static, CriticalSectionRawMutex, LcdCommand, 16>,
+    display_command_sender: &'static Sender<'static, CriticalSectionRawMutex, DisplayCommand, 16>,
 ) -> ! {
     // Set up the touch SPI device.
     let touch_cs = Output::new(touch_cs, Level::High, OutputConfig::default());
@@ -205,7 +203,7 @@ async fn touch_task(
 
                 if point.x >= 0 && point.x < 240 && point.y >= 0 && point.y < 320 {
                     display_command_sender
-                        .send(LcdCommand::TouchPoint(point))
+                        .send(DisplayCommand::TouchPoint(point))
                         .await;
                 }
             }
@@ -218,11 +216,16 @@ async fn touch_task(
 #[embassy_executor::task]
 async fn display_task(
     spi_bus: &'static Mutex<CriticalSectionRawMutex, RefCell<Spi<'static, Blocking>>>,
-    display_cs: GPIO_LCD_CS<'static>,
-    display_dc: GPIO_LCD_DC<'static>,
-    display_reset: GPIO_LCD_RESET<'static>,
-    display_backlight: GPIO_LCD_BACKLIGHT<'static>,
-    display_command_receiver: &'static Receiver<'static, CriticalSectionRawMutex, LcdCommand, 16>,
+    display_cs: GPIO_DISPLAY_CS<'static>,
+    display_dc: GPIO_DISPLAY_DC<'static>,
+    display_reset: GPIO_DISPLAY_RESET<'static>,
+    display_backlight: GPIO_DISPLAY_BACKLIGHT<'static>,
+    display_command_receiver: &'static Receiver<
+        'static,
+        CriticalSectionRawMutex,
+        DisplayCommand,
+        16,
+    >,
 ) -> ! {
     // Set up the LCD SPI device.
     let display_cs = Output::new(display_cs, Level::High, OutputConfig::default());
@@ -259,8 +262,8 @@ async fn display_task(
 
     loop {
         match display_command_receiver.receive().await {
-            LcdCommand::Clear => display.clear(Rgb565::CSS_BLACK).unwrap(),
-            LcdCommand::TouchPoint(point) => {
+            DisplayCommand::Clear => display.clear(Rgb565::CSS_BLACK).unwrap(),
+            DisplayCommand::TouchPoint(point) => {
                 dot.translate(point).draw(&mut display).unwrap();
             }
         }
