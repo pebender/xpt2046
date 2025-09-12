@@ -445,13 +445,13 @@ where
     /// Returns the touch position in XPT2046 measurement units.
     ///
     /// This is made available for use in touch screen calibration procedures.
-    pub fn get_touch_position_raw(&self) -> Point {
+    pub fn get_touch_point_raw(&self) -> Point {
         self.sample_buffer.average()
     }
 
     /// Returns the touch position in display pixel units.
-    pub fn get_touch_position(&self) -> Point {
-        let raw_point = self.get_touch_position_raw();
+    pub fn get_touch_point(&self) -> Point {
+        let raw_point = self.get_touch_point_raw();
 
         let x = raw_point.x as f32;
         let y = raw_point.y as f32;

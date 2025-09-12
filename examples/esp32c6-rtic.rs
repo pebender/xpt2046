@@ -109,7 +109,7 @@ mod app {
                             Err(e) => error!("{:?}", e),
                         }
                         if drv.is_touched() {
-                            let p = drv.get_touch_position();
+                            let p = drv.get_touch_point();
                             info!("x:{} y:{}", p.x, p.y);
                         }
                     });

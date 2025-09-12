@@ -75,10 +75,10 @@ async fn main(spawner: Spawner) -> ! {
     let spi_sclk = peripherals.GPIO6;
     let spi_mosi = peripherals.GPIO7;
     let spi_miso = peripherals.GPIO2;
-    let lcd_cs = peripherals.GPIO16;
-    let lcd_dc = peripherals.GPIO22;
-    let lcd_reset = peripherals.GPIO21;
-    let lcd_backlight = peripherals.GPIO20;
+    let display_cs = peripherals.GPIO16;
+    let display_dc = peripherals.GPIO22;
+    let display_reset = peripherals.GPIO21;
+    let display_backlight = peripherals.GPIO20;
     let touch_cs = peripherals.GPIO17;
     let touch_irq = peripherals.GPIO18;
 
@@ -98,34 +98,34 @@ async fn main(spawner: Spawner) -> ! {
         &*make_static!(Mutex<CriticalSectionRawMutex, RefCell<Spi<'static, Blocking>>>, spi_bus);
 
     // Set up the LCD SPI device.
-    let lcd_cs = Output::new(lcd_cs, Level::High, OutputConfig::default());
-    let lcd_spi_device = SpiDeviceWithConfig::new(
+    let display_cs = Output::new(display_cs, Level::High, OutputConfig::default());
+    let display_spi_device = SpiDeviceWithConfig::new(
         spi_bus,
-        lcd_cs,
+        display_cs,
         Config::default()
             .with_mode(Mode::_0)
             .with_frequency(Rate::from_mhz(40)),
     );
 
     // Set up the mipidsi display interface
-    let lcd_dc = Output::new(lcd_dc, Level::Low, OutputConfig::default());
-    let mut lcd_buffer = [0_u8; 512];
-    let lcd_interface =
-        mipidsi::interface::SpiInterface::new(lcd_spi_device, lcd_dc, &mut lcd_buffer);
+    let display_dc = Output::new(display_dc, Level::Low, OutputConfig::default());
+    let mut display_buffer = [0_u8; 512];
+    let display_interface =
+        mipidsi::interface::SpiInterface::new(display_spi_device, display_dc, &mut display_buffer);
 
     // Set up the mipidsi display
-    let mut lcd_backlight = Output::new(lcd_backlight, Level::Low, OutputConfig::default());
-    let lcd_reset = Output::new(lcd_reset, Level::Low, OutputConfig::default());
+    let mut display_backlight = Output::new(display_backlight, Level::Low, OutputConfig::default());
+    let display_reset = Output::new(display_reset, Level::Low, OutputConfig::default());
     let mut delay = Delay;
-    let mut lcd = mipidsi::Builder::new(mipidsi::models::ILI9341Rgb565, lcd_interface)
+    let mut display = mipidsi::Builder::new(mipidsi::models::ILI9341Rgb565, display_interface)
         .display_size(240, 320)
         .orientation(mipidsi::options::Orientation::new().flip_horizontal())
         .color_order(mipidsi::options::ColorOrder::Bgr)
-        .reset_pin(lcd_reset)
+        .reset_pin(display_reset)
         .init(&mut delay)
         .unwrap();
-    lcd.clear(Rgb565::BLACK).unwrap();
-    lcd_backlight.set_high();
+    display.clear(Rgb565::BLACK).unwrap();
+    display_backlight.set_high();
 
     // Set up the touch SPI device.
     let touch_cs = Output::new(touch_cs, Level::High, OutputConfig::default());
@@ -151,7 +151,7 @@ async fn main(spawner: Spawner) -> ! {
     debug!("{:?}", calibration_data);
     loop {
         let calibration_data =
-            match run_calibration(&mut touch, &mut touch_irq, &mut lcd, &mut delay) {
+            match run_calibration(&mut touch, &mut touch_irq, &mut display, &mut delay) {
                 Ok(v) => v,
                 Err(e) => {
                     warn!("{:?}", e);
