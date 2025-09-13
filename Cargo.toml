@@ -95,7 +95,4 @@ mipidsi = { git = "https://github.com/almindor/mipidsi", rev = "d9992f3d6d84dcd9
 name = "esp32c6-embassy"
 
 [[example]]
-name = "esp32c6-calibrate"
-
-[[example]]
 name = "stm32f411-rtic"
