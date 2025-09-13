@@ -90,6 +90,7 @@ stm32f4xx-hal = { version = "0.22.1", features = ["stm32f411"] }
 embassy-executor = { git = "https://github.com/embassy-rs/embassy.git", rev = "98595f659c309703aab411b6b3be7579b6e93c5d" }
 # mipidsi 0.9.0 does not have defmt support.
 mipidsi = { git = "https://github.com/almindor/mipidsi", rev = "d9992f3d6d84dcd9143120ead41f6c74fbeb8235" }
+
 [[example]]
 name = "esp32c6-embassy"
 

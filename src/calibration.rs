@@ -66,7 +66,7 @@ pub struct RelativeOrientation {
 }
 
 impl RelativeOrientation {
-    pub fn new(swap_xy: bool, mirror_x: bool, mirror_y: bool) -> Self {
+    pub const fn new(swap_xy: bool, mirror_x: bool, mirror_y: bool) -> Self {
         RelativeOrientation {
             swap_xy,
             mirror_x,
