@@ -71,6 +71,9 @@ esp-hal-embassy = { version = "0.9.0", features = ["esp32c6"] }
 esp-println = { version = "0.15.0", features = ["esp32c6", "auto"] }
 mipidsi = { version = "0.9.0" }
 static_cell = { version = "2.1.1" }
+rtic = { version = "2.2.0", features = ["riscv-esp32c6-backend"] }
+esp32c6 = { version = "0.21.0", features = ["critical-section"] }
+embedded-hal-bus = { version = "0.3.0" }
 
 [target.thumbv7em-none-eabihf.dev-dependencies]
 cortex-m = { version = "0.7.6", features = ["critical-section-single-core"] }
@@ -90,6 +93,8 @@ stm32f4xx-hal = { version = "0.22.1", features = ["stm32f411"] }
 embassy-executor = { git = "https://github.com/embassy-rs/embassy.git", rev = "98595f659c309703aab411b6b3be7579b6e93c5d" }
 # mipidsi 0.9.0 does not have defmt support.
 mipidsi = { git = "https://github.com/almindor/mipidsi", rev = "d9992f3d6d84dcd9143120ead41f6c74fbeb8235" }
+# rtic 2.2.0 does not support esp-hal 1.0.0-rc.0
+rtic = { git = "https://github.com/pebender/rtic", rev = "5c067771ef65b716b3920e1057909749b9a6c480" }
 
 [[example]]
 name = "esp32c6-embassy"
