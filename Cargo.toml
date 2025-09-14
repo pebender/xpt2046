@@ -64,16 +64,16 @@ embassy-time = { version = "0.5.0" }
 embedded-graphics = { version = "0.8.1" }
 embedded-hal = { version = "1.0.0" }
 embedded-hal-async = { version = "1.0.0" }
+embedded-hal-bus = { version = "0.3.0" }
 esp-backtrace = { version = "0.17.0", features = ["esp32c6", "println", "panic-handler", "exception-handler"] }
 esp-bootloader-esp-idf = { version = "0.2.0", features = ["esp32c6"] }
 esp-hal = { version = "=1.0.0-rc.0", features = ["esp32c6", "unstable"] }
 esp-hal-embassy = { version = "0.9.0", features = ["esp32c6"] }
 esp-println = { version = "0.15.0", features = ["esp32c6", "auto"] }
-mipidsi = { version = "0.9.0" }
-static_cell = { version = "2.1.1" }
-rtic = { version = "2.2.0", features = ["riscv-esp32c6-backend"] }
 esp32c6 = { version = "0.21.0", features = ["critical-section"] }
-embedded-hal-bus = { version = "0.3.0" }
+mipidsi = { version = "0.9.0" }
+rtic = { version = "2.2.0", features = ["riscv-esp32c6-backend"] }
+static_cell = { version = "2.1.1" }
 
 [target.thumbv7em-none-eabihf.dev-dependencies]
 cortex-m = { version = "0.7.6", features = ["critical-section-single-core"] }
@@ -94,10 +94,13 @@ embassy-executor = { git = "https://github.com/embassy-rs/embassy.git", rev = "9
 # mipidsi 0.9.0 does not have defmt support.
 mipidsi = { git = "https://github.com/almindor/mipidsi", rev = "d9992f3d6d84dcd9143120ead41f6c74fbeb8235" }
 # rtic 2.2.0 does not support esp-hal 1.0.0-rc.0
-rtic = { git = "https://github.com/pebender/rtic", rev = "5c067771ef65b716b3920e1057909749b9a6c480" }
+rtic = { git = "https://github.com/pebender/rtic", rev = "c94dfcdd86574292748ef809c884f65c92e6cad2" }
 
 [[example]]
 name = "esp32c6-embassy"
+
+[[example]]
+name = "esp32c6-rtic"
 
 [[example]]
 name = "stm32f411-rtic"
