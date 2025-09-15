@@ -39,6 +39,10 @@ defmt = [
 ]
 log = [
     "dep:log",
+    "embassy-executor/log",
+    "embassy-futures/log",
+    "embassy-sync/log",
+    "embassy-time/log",
     "esp-bootloader-esp-idf/log-04",
     "esp-hal/log-04",
     "esp-hal-embassy/log-04",
@@ -94,7 +98,7 @@ embassy-executor = { git = "https://github.com/embassy-rs/embassy.git", rev = "9
 # mipidsi 0.9.0 does not have defmt support.
 mipidsi = { git = "https://github.com/almindor/mipidsi", rev = "d9992f3d6d84dcd9143120ead41f6c74fbeb8235" }
 # rtic 2.2.0 does not support esp-hal 1.0.0-rc.0
-rtic = { git = "https://github.com/pebender/rtic", rev = "c94dfcdd86574292748ef809c884f65c92e6cad2" }
+rtic = { git = "https://github.com/pebender/rtic", rev = "5c067771ef65b716b3920e1057909749b9a6c480" }
 
 [[example]]
 name = "esp32c6-embassy"
