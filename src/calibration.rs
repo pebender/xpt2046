@@ -18,8 +18,6 @@
 
 use super::driver::{CalibrationData, Point};
 use core::fmt::Debug;
-#[cfg(feature = "defmt")]
-use defmt::Format;
 
 /// Re-exported from
 /// [embedded_graphics](https://docs.rs/embedded-graphics/latest/embedded_graphics/index.html)
@@ -27,7 +25,7 @@ use defmt::Format;
 pub use embedded_graphics::geometry::Size;
 
 /// The error returned when an error occurs in [`calculate_calibration_data()`].
-#[cfg_attr(feature = "defmt", derive(Format))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(Debug)]
 pub enum CalibrationError {
     All,
@@ -41,7 +39,7 @@ pub enum CalibrationError {
 
 /// The three calibration points for either the display panel or the touch
 /// panel.
-#[cfg_attr(feature = "defmt", derive(Format))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(Debug)]
 pub struct CalibrationPoints {
     pub a: Point,
@@ -54,7 +52,7 @@ pub struct CalibrationPoints {
 ///
 /// It is used by [`estimate_calibration_data()`] in conjunction with the
 /// display size to create an estimate of [`CalibrationData`].
-#[cfg_attr(feature = "defmt", derive(Format))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(Debug)]
 pub struct RelativeOrientation {
     /// Swap the X and Y axes.

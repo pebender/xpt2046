@@ -17,8 +17,6 @@ use super::{
     driver::{CalibrationData, Error, Point, Xpt2046},
 };
 use core::fmt::Debug;
-#[cfg(feature = "defmt")]
-use defmt::Format;
 use embedded_graphics::{
     draw_target::DrawTarget,
     pixelcolor::RgbColor,
@@ -28,9 +26,14 @@ use embedded_graphics::{
 use embedded_hal::{delay::DelayNs, digital::InputPin, spi::SpiDevice};
 
 /// The error returned when an error occurs in [`run_calibration()`].
-#[cfg_attr(feature = "defmt", derive(Format))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(Debug)]
-pub enum CalibrationRunError<SpiError, IrqError, DTError> {
+pub enum CalibrationRunError<SpiError, IrqError, DTError>
+where
+    SpiError: embedded_hal::spi::Error,
+    IrqError: embedded_hal::digital::Error,
+    DTError: Debug,
+{
     /// An error occurred in the Xpt2046 touch panel driver.
     Xpt2046(Error<SpiError, IrqError>),
     /// An error occurred in the display panel driver.
@@ -40,17 +43,17 @@ pub enum CalibrationRunError<SpiError, IrqError, DTError> {
 }
 
 /// Runs the touch screen calibration procedure.
-pub fn run_calibration<SPI, SPIError, IRQ, IRQError, DT, DTError, DELAY>(
-    touch: &mut Xpt2046<SPI>,
-    irq: &mut IRQ,
+pub fn run_calibration<Spi, SpiError, Irq, IrqError, DT, DTError, DELAY>(
+    touch: &mut Xpt2046<Spi>,
+    irq: &mut Irq,
     draw_target: &mut DT,
     delay: &mut DELAY,
-) -> Result<CalibrationData, CalibrationRunError<SPIError, IRQError, DTError>>
+) -> Result<CalibrationData, CalibrationRunError<SpiError, IrqError, DTError>>
 where
-    SPI: SpiDevice<u8, Error = SPIError>,
-    SPIError: Debug,
-    IRQ: InputPin<Error = IRQError>,
-    IRQError: Debug,
+    Spi: SpiDevice<u8, Error = SpiError>,
+    SpiError: embedded_hal::spi::Error,
+    Irq: InputPin<Error = IrqError>,
+    IrqError: embedded_hal::digital::Error,
     DT: DrawTarget<Color: RgbColor, Error = DTError>,
     DTError: Debug,
     DELAY: DelayNs,

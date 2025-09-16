@@ -21,15 +21,11 @@ mod app {
 
     #[cfg(feature = "defmt")]
     #[allow(unused_imports)]
-    use defmt::{debug, error, info, println, trace, warn};
+    use defmt::{debug, error, info, trace, warn};
 
     #[cfg(feature = "log")]
     #[allow(unused_imports)]
     use log::{debug, error, info, trace, warn};
-
-    #[cfg(feature = "log")]
-    #[allow(unused_imports)]
-    use esp_println::println;
 
     type TouchSpi<'a> =
         embedded_hal_bus::spi::ExclusiveDevice<Spi<'a, Blocking>, Output<'a>, Delay>;
@@ -129,7 +125,7 @@ mod app {
         touch_irq.lock(|irq| {
             irq.clear_interrupt();
         });
-        defmt::println!("touch_irq");
+        info!("touch_irq");
     }
     */
 }

@@ -344,10 +344,7 @@ pub(self) mod touch {
     #[allow(unused_imports)]
     use log::{debug, error, info, trace, warn};
 
-    #[cfg(feature = "defmt")]
-    use defmt::Format;
-
-    #[cfg_attr(feature = "defmt", derive(Format))]
+    #[cfg_attr(feature = "defmt", derive(defmt::Format))]
     #[derive(Debug, Clone, Copy)]
     pub enum TouchEvent {
         /// The first touch point sent since a touch was detected.
@@ -362,7 +359,7 @@ pub(self) mod touch {
         Up,
     }
 
-    #[cfg_attr(feature = "defmt", derive(Format))]
+    #[cfg_attr(feature = "defmt", derive(defmt::Format))]
     #[derive(Debug)]
     pub enum TouchEventMode {
         /// Don't send a new touch event when the new touch point is outside the
@@ -375,7 +372,7 @@ pub(self) mod touch {
         Raw,
     }
 
-    #[cfg_attr(feature = "defmt", derive(Format))]
+    #[cfg_attr(feature = "defmt", derive(defmt::Format))]
     #[derive(Debug)]
     pub enum TouchCommand {
         /// Update the calibration data being used by the XPT2046 driver.
@@ -416,9 +413,9 @@ pub(self) mod touch {
     ) -> Result<(), Error<SpiError, IrqError>>
     where
         Spi: SpiDevice<Error = SpiError>,
-        SpiError: Debug,
+        SpiError: embedded_hal::spi::Error,
         Irq: InputPin<Error = IrqError> + Wait,
-        IrqError: Debug,
+        IrqError: embedded_hal::digital::Error,
         M: RawMutex,
     {
         let commands_receiver = commands.receiver();
@@ -528,11 +525,8 @@ pub(self) mod display {
     #[allow(unused_imports)]
     use log::{debug, error, info, trace, warn};
 
-    #[cfg(feature = "defmt")]
-    use defmt::Format;
-
     /// Commands that can be sent to the display task.
-    #[cfg_attr(feature = "defmt", derive(Format))]
+    #[cfg_attr(feature = "defmt", derive(defmt::Format))]
     #[derive(Debug)]
     pub enum DisplayCommand {
         /// Commands the display task to clear the display.

@@ -25,8 +25,6 @@
 //! sheet (<https://www.snapeda.com/parts/XPT2046/Xptek/datasheet/>).
 
 use core::fmt::Debug;
-#[cfg(feature = "defmt")]
-use defmt::Format;
 use embedded_hal::{digital::InputPin, spi::SpiDevice};
 
 /// Re-exported from
@@ -51,11 +49,9 @@ pub use embedded_graphics::geometry::Point;
 /// control byte.
 mod control_byte {
     use core::fmt::Debug;
-    #[cfg(feature = "defmt")]
-    use defmt::Format;
 
     /// Selects the voltage source (channel) to be measured.
-    #[cfg_attr(feature = "defmt", derive(Format))]
+    #[cfg_attr(feature = "defmt", derive(defmt::Format))]
     #[derive(Debug)]
     pub enum ChannelSelect {
         /// the X-Position measurement.
@@ -78,7 +74,7 @@ mod control_byte {
 
     /// Selects the ADC precision for the measurement.
     #[allow(dead_code)]
-    #[cfg_attr(feature = "defmt", derive(Format))]
+    #[cfg_attr(feature = "defmt", derive(defmt::Format))]
     #[derive(Debug)]
     pub enum ADCModeSelect {
         /// Make the measurement with 12-bits of ADC precision.
@@ -96,7 +92,7 @@ mod control_byte {
     /// or a duel-ended reference. The TEMP0, TEMP1, VBAT and AUXIN measurements
     /// can only use a single-ended reference.
     #[allow(dead_code)]
-    #[cfg_attr(feature = "defmt", derive(Format))]
+    #[cfg_attr(feature = "defmt", derive(defmt::Format))]
     #[derive(Debug)]
     pub enum SerDerSelect {
         Der = 0b0,
@@ -114,7 +110,7 @@ mod control_byte {
     /// voltage reference. The TEMP0, TEMP1, VBAT and AUXIN can only use the
     /// internal voltage reference.
     #[allow(dead_code)]
-    #[cfg_attr(feature = "defmt", derive(Format))]
+    #[cfg_attr(feature = "defmt", derive(defmt::Format))]
     #[derive(Debug)]
     pub enum InternalReferenceEnable {
         Disable = 0b0,
@@ -123,7 +119,7 @@ mod control_byte {
 
     // Selects whether to enable PENIRQ.
     #[allow(dead_code)]
-    #[cfg_attr(feature = "defmt", derive(Format))]
+    #[cfg_attr(feature = "defmt", derive(defmt::Format))]
     #[derive(Debug)]
     pub enum PenIrqEnable {
         Enable = 0b0,
@@ -252,9 +248,13 @@ mod control_byte {
 const TOUCH_SAMPLE_BUFFER_SIZE: usize = 64;
 
 /// Error type returned by [`Xpt2046::run()`].
-#[cfg_attr(feature = "defmt", derive(Format))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(Debug)]
-pub enum Error<SpiError, IrqError> {
+pub enum Error<SpiError, IrqError>
+where
+    SpiError: embedded_hal::spi::Error,
+    IrqError: embedded_hal::digital::Error,
+{
     /// SPI error
     Spi(SpiError),
     /// IRQ error
@@ -276,7 +276,7 @@ pub enum Error<SpiError, IrqError> {
 /// calibration data. [`crate::calibration_run::run_calibration()`] can be used
 /// to run a calibration routine for a touch screen and create the calibration
 /// data.
-#[cfg_attr(feature = "defmt", derive(Format))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(Debug, Clone, Copy)]
 pub struct CalibrationData {
     pub alpha_x: f32,
@@ -288,7 +288,7 @@ pub struct CalibrationData {
 }
 
 /// Current state of the driver
-#[cfg_attr(feature = "defmt", derive(Format))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(Debug, PartialEq)]
 enum TouchPanelState {
     /// Waiting for a touch (waiting for PENIRQ to go low).
@@ -304,7 +304,7 @@ enum TouchPanelState {
 }
 
 /// A circular buffer for storing and filtering touch samples.
-#[cfg_attr(feature = "defmt", derive(Format))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(Debug)]
 struct TouchSampleBuffer {
     /// A buffer of the last TOUCH_SAMPLE_BUFFER_SIZE touch samples.
@@ -338,7 +338,7 @@ impl TouchSampleBuffer {
 }
 
 /// The Xpt2046 driver.
-#[cfg_attr(feature = "defmt", derive(Format))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(Debug)]
 pub struct Xpt2046<Spi> {
     /// THe SPI device interface
@@ -354,7 +354,7 @@ pub struct Xpt2046<Spi> {
 impl<Spi, SpiError> Xpt2046<Spi>
 where
     Spi: SpiDevice<u8, Error = SpiError>,
-    SpiError: Debug,
+    SpiError: embedded_hal::spi::Error,
 {
     pub fn new(spi: Spi, calibration_data: &CalibrationData) -> Self {
         Self {
@@ -392,7 +392,7 @@ where
     pub fn run<Irq, IrqError>(&mut self, irq: &mut Irq) -> Result<(), Error<SpiError, IrqError>>
     where
         Irq: InputPin<Error = IrqError>,
-        IrqError: Debug,
+        IrqError: embedded_hal::digital::Error,
     {
         match self.panel_state {
             TouchPanelState::IDLE => {
