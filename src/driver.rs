@@ -299,8 +299,6 @@ enum TouchPanelState {
     BUFFERING,
     /// A touch has been reliably detected and filtered.
     TOUCHED,
-    /// Touch released
-    RELEASED,
 }
 
 /// A circular buffer for storing and filtering touch samples.
@@ -309,6 +307,7 @@ enum TouchPanelState {
 struct TouchSampleBuffer {
     /// A buffer of the last TOUCH_SAMPLE_BUFFER_SIZE touch samples.
     buffer: [Point; TOUCH_SAMPLE_BUFFER_SIZE],
+    total: Point,
     /// The index in the buffer where the next touch sample will be stored.
     index: usize,
 }
@@ -317,6 +316,7 @@ impl Default for TouchSampleBuffer {
     fn default() -> Self {
         Self {
             buffer: [Point::zero(); TOUCH_SAMPLE_BUFFER_SIZE],
+            total: Point::zero(),
             index: 0,
         }
     }
@@ -324,16 +324,7 @@ impl Default for TouchSampleBuffer {
 
 impl TouchSampleBuffer {
     pub fn average(&self) -> Point {
-        let mut x = 0;
-        let mut y = 0;
-
-        for point in self.buffer {
-            x += point.x;
-            y += point.y;
-        }
-        x /= TOUCH_SAMPLE_BUFFER_SIZE as i32;
-        y /= TOUCH_SAMPLE_BUFFER_SIZE as i32;
-        Point::new(x, y)
+        self.total / (TOUCH_SAMPLE_BUFFER_SIZE as i32)
     }
 }
 
@@ -371,7 +362,6 @@ where
         // reference is disabled and PENIRQ is enabled.
         _ = self.measure_xy_positions()?;
 
-        self.sample_buffer.index = 0;
         self.panel_state = TouchPanelState::IDLE;
 
         Ok(())
@@ -384,62 +374,63 @@ where
         self.calibration_data = *calibration_data;
     }
 
+    pub fn run_init(&mut self) {
+        self.panel_state = TouchPanelState::IDLE;
+    }
+
     /// Collects the touch position measurements.
     ///
-    /// This should be run continually. This can be done by calling from some
-    /// main loop of some task or by calling from a timer interrupt. After
-    /// PENIRQ goes high, calling can be suspended until PENIRQ goes low again.
-    pub fn run<Irq, IrqError>(&mut self, irq: &mut Irq) -> Result<(), Error<SpiError, IrqError>>
+    /// Once PENIRQ goes low, this should be run until no longer return true.
+    /// This can be done by calling it from some main loop of some task or by
+    /// calling from a timer interrupt. After it no longer returns true, calling
+    /// can be suspended until PENIRQ goes low again. If it terminates before
+    /// returning true, then you should call run_init() before calling run()
+    /// again. There is no harm in calling run_init() before starting the loop
+    /// that calls run().
+    pub fn run<Irq, IrqError>(&mut self, irq: &mut Irq) -> Result<bool, Error<SpiError, IrqError>>
     where
         Irq: InputPin<Error = IrqError>,
         IrqError: embedded_hal::digital::Error,
     {
+        if irq.is_high().map_err(|e| Error::Irq(e))? {
+            self.panel_state = TouchPanelState::IDLE;
+            return Ok(false);
+        }
         match self.panel_state {
             TouchPanelState::IDLE => {
-                if irq.is_low().map_err(|e| Error::Irq(e))? {
-                    self.sample_buffer.index = 0;
-                    self.panel_state = TouchPanelState::SETTLING;
-                }
+                self.sample_buffer.index = 0;
+                self.panel_state = TouchPanelState::SETTLING;
             }
             TouchPanelState::SETTLING => {
-                if irq.is_high().map_err(|e| Error::Irq(e))? {
-                    self.panel_state = TouchPanelState::RELEASED
-                }
                 self.sample_buffer.index += 1;
-                if self.sample_buffer.index == TOUCH_SAMPLE_BUFFER_SIZE {
-                    self.sample_buffer.index = 0;
+                self.sample_buffer.index %= TOUCH_SAMPLE_BUFFER_SIZE;
+                if self.sample_buffer.index == 0 {
+                    self.sample_buffer.total = Point::zero();
                     self.panel_state = TouchPanelState::BUFFERING;
                 }
             }
             TouchPanelState::BUFFERING => {
-                if irq.is_high().map_err(|e| Error::Irq(e))? {
-                    self.panel_state = TouchPanelState::RELEASED
-                }
-                let position = self.measure_xy_positions().map_err(|e| Error::Spi(e))?;
-                self.sample_buffer.buffer[self.sample_buffer.index] =
-                    Point::new(position.0.into(), position.1.into());
+                let (x, y) = self.measure_xy_positions().map_err(|e| Error::Spi(e))?;
+                let point = Point::new(x.into(), y.into());
+                self.sample_buffer.total += point;
+                self.sample_buffer.buffer[self.sample_buffer.index] = point;
                 self.sample_buffer.index += 1;
-                if self.sample_buffer.index == TOUCH_SAMPLE_BUFFER_SIZE {
-                    self.sample_buffer.index = 0;
+                self.sample_buffer.index %= TOUCH_SAMPLE_BUFFER_SIZE;
+                if self.sample_buffer.index == 0 {
                     self.panel_state = TouchPanelState::TOUCHED;
                 }
             }
             TouchPanelState::TOUCHED => {
-                let position = self.measure_xy_positions().map_err(|e| Error::Spi(e))?;
-                self.sample_buffer.buffer[self.sample_buffer.index] =
-                    Point::new(position.0.into(), position.1.into());
+                let (x, y) = self.measure_xy_positions().map_err(|e| Error::Spi(e))?;
+                let point = Point::new(x.into(), y.into());
+                self.sample_buffer.total -= self.sample_buffer.buffer[self.sample_buffer.index];
+                self.sample_buffer.total += point;
+                self.sample_buffer.buffer[self.sample_buffer.index] = point;
                 self.sample_buffer.index += 1;
                 self.sample_buffer.index %= TOUCH_SAMPLE_BUFFER_SIZE;
-                if irq.is_high().map_err(|e| Error::Irq(e))? {
-                    self.panel_state = TouchPanelState::RELEASED
-                }
-            }
-            TouchPanelState::RELEASED => {
-                self.sample_buffer.index = 0;
-                self.panel_state = TouchPanelState::IDLE;
             }
         }
-        Ok(())
+        Ok(true)
     }
 
     /// Returns the touch position in XPT2046 measurement units.
@@ -471,10 +462,9 @@ where
         self.panel_state == TouchPanelState::TOUCHED
     }
 
-    /// Sometimes the TOUCHED state needs to be cleared
+    /// This calls run init.
     pub fn clear_touch(&mut self) {
-        self.sample_buffer.index = 0;
-        self.panel_state = TouchPanelState::IDLE;
+        self.run_init();
     }
 
     /// Returns the X-Position measurement.
