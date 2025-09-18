@@ -234,11 +234,11 @@ mod control_byte {
     /// driver sends INTERNAL_REFERENCE_ENABLE to enable it.
     ///
     /// Since every control byte must trigger some measurement,
-    /// INTERNAL_REFERENCE_ENABLE triggers a throwaway 8-bit, single-ended
+    /// INTERNAL_REFERENCE_ENABLE triggers a throwaway 12-bit, single-ended
     /// measurement of TEMP0.
     pub const INTERNAL_REFERENCE_ENABLE: [u8; 2] = build_delayed_control_byte(
         ChannelSelect::TEMP0,
-        ADCModeSelect::Bits8,
+        ADCModeSelect::Bits12,
         SerDerSelect::Ser,
         InternalReferenceEnable::Enable,
         PenIrqEnable::Enable,
@@ -614,11 +614,11 @@ where
         const RE: [u8; 2] = control_byte::INTERNAL_REFERENCE_ENABLE;
         const M0: [u8; 2] = control_byte::ChannelSelect::TEMP0.into_delayed_control_byte();
         const M1: [u8; 2] = control_byte::ChannelSelect::TEMP1.into_delayed_control_byte();
-        const TX_BUF: [u8; 9] = [RE[0], RE[1], M0[0], M0[1], RE[0], RE[1], M1[0], M1[0], 0];
+        const TX_BUF: [u8; 9] = [RE[0], RE[1], M0[0], M0[1], RE[0], RE[1], M1[0], M1[1], 0];
         let mut rx_buf = [0; 9];
         self.spi.transfer(&mut rx_buf, &TX_BUF)?;
         let v0 = u16::from_be_bytes([rx_buf[3], rx_buf[4]]);
-        let v1 = u16::from_be_bytes([rx_buf[5], rx_buf[6]]);
+        let v1 = u16::from_be_bytes([rx_buf[7], rx_buf[8]]);
         Ok((v0, v1))
     }
 
