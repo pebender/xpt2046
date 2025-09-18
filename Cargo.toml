@@ -98,7 +98,7 @@ embassy-executor = { git = "https://github.com/embassy-rs/embassy.git", rev = "9
 # mipidsi 0.9.0 does not have defmt support.
 mipidsi = { git = "https://github.com/almindor/mipidsi", rev = "d9992f3d6d84dcd9143120ead41f6c74fbeb8235" }
 # rtic 2.2.0 does not support esp-hal 1.0.0-rc.0
-rtic = { git = "https://github.com/pebender/rtic", rev = "5c067771ef65b716b3920e1057909749b9a6c480" }
+rtic = { git = "https://github.com/rtic-rs/rtic", rev = "300ad99b74b7d1f4e81633344ef7f68cb3dfbced" }
 
 [[example]]
 name = "esp32c6-embassy"
