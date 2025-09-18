@@ -1,0 +1,17 @@
+Binarii
+defmt
+espflash
+mipidsi
+MOSI
+PENIRQ
+pixelcolor
+println
+riscv
+riscv32imac-unknown-none-elf
+rtic
+Shenzhen
+SLYT277
+thumbv7
+thumbv7em-none-eabihf
+VBAT
+Xptek

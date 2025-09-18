@@ -1,17 +1,35 @@
 {
-  "files.autoSave": "onFocusChange",
-  "files.associations": {
-    "LICENSE-APACHE": "plaintext",
-    "LICENSE-MIT": "plaintext"
-  },
-  "[json]": {
-    "editor.defaultFormatter": "vscode.json-language-features",
-    "editor.formatOnSave": true,
-  },
-  "[rust]": {
-    "editor.defaultFormatter": "rust-lang.rust-analyzer",
-    "editor.formatOnSave": true
-  },
-  "rust-analyzer.cargo.allTargets": false,
-  "rust-analyzer.cargo.target": "riscv32imac-unknown-none-elf"
+    "editor.tabSize": 4,
+    "editor.insertSpaces": true,
+    "files.autoSave": "onFocusChange",
+    "files.associations": {
+        "LICENSE-APACHE": "plaintext",
+        "LICENSE-MIT": "plaintext"
+    },
+    "[json]": {
+        "editor.defaultFormatter": "vscode.json-language-features",
+        "editor.formatOnSave": true,
+    },
+    "[rust]": {
+        "editor.defaultFormatter": "rust-lang.rust-analyzer",
+        "editor.formatOnSave": true
+    },
+    "cSpell.customDictionaries": {
+        "cSpell-dictionary": {
+            "name": "cSpell-dictionary",
+            "path": "${workspaceRoot}/.vscode/cSpell-dictionary.txt",
+            "description": "project's cSpell Dictionary",
+            "addWords": true
+        },
+        "custom": true,
+        "internal-terms": false
+    },
+    "cSpell.ignorePaths": [
+        ".git",
+        ".gitignore",
+        ".vscode",
+        "Cargo.lock"
+    ],
+    "rust-analyzer.cargo.allTargets": false,
+    "rust-analyzer.cargo.target": "riscv32imac-unknown-none-elf"
 }
