@@ -331,9 +331,11 @@ impl TouchSampleBuffer {
 /// The Xpt2046 driver.
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(Debug)]
-pub struct Xpt2046<Spi> {
-    /// THe SPI device interface
+pub struct Xpt2046<Spi, Irq> {
+    /// The SPI device interface
     spi: Spi,
+    /// The PENIRQ pin
+    irq: Irq,
     /// Current driver state
     panel_state: TouchPanelState,
     /// Buffer for the touch measurement samples
@@ -342,14 +344,17 @@ pub struct Xpt2046<Spi> {
     calibration_data: CalibrationData,
 }
 
-impl<Spi, SpiError> Xpt2046<Spi>
+impl<Spi, SpiError, Irq, IrqError> Xpt2046<Spi, Irq>
 where
     Spi: SpiDevice<u8, Error = SpiError>,
     SpiError: embedded_hal::spi::Error,
+    Irq: InputPin<Error = IrqError>,
+    IrqError: embedded_hal::digital::Error,
 {
-    pub fn new(spi: Spi, calibration_data: &CalibrationData) -> Self {
+    pub fn new(spi: Spi, irq: Irq, calibration_data: &CalibrationData) -> Self {
         Self {
             spi,
+            irq,
             panel_state: TouchPanelState::IDLE,
             sample_buffer: TouchSampleBuffer::default(),
             calibration_data: *calibration_data,
@@ -357,10 +362,10 @@ where
     }
 
     /// Reset the driver and preload tx buffer with register data.
-    pub fn init(&mut self) -> Result<(), SpiError> {
+    pub fn init(&mut self) -> Result<(), Error<SpiError, IrqError>> {
         // Make a throwaway position measurement so that the internal voltage
         // reference is disabled and PENIRQ is enabled.
-        _ = self.measure_xy_positions()?;
+        _ = self.measure_xy_positions().map_err(|e| Error::Spi(e))?;
 
         self.panel_state = TouchPanelState::IDLE;
 
@@ -387,12 +392,8 @@ where
     /// returning true, then you should call run_init() before calling run()
     /// again. There is no harm in calling run_init() before starting the loop
     /// that calls run().
-    pub fn run<Irq, IrqError>(&mut self, irq: &mut Irq) -> Result<bool, Error<SpiError, IrqError>>
-    where
-        Irq: InputPin<Error = IrqError>,
-        IrqError: embedded_hal::digital::Error,
-    {
-        if irq.is_high().map_err(|e| Error::Irq(e))? {
+    pub fn run(&mut self) -> Result<bool, Error<SpiError, IrqError>> {
+        if self.irq.is_high().map_err(|e| Error::Irq(e))? {
             self.panel_state = TouchPanelState::IDLE;
             return Ok(false);
         }
@@ -465,6 +466,10 @@ where
     /// This calls run init.
     pub fn clear_touch(&mut self) {
         self.run_init();
+    }
+
+    pub fn penirq_is_active(&mut self) -> Result<bool, Error<SpiError, IrqError>> {
+        self.irq.is_low().map_err(|e| Error::Irq(e))
     }
 
     /// Returns the X-Position measurement.
@@ -648,5 +653,17 @@ where
         self.spi.transfer(&mut rx_buf, &TX_BUF)?;
         let v0 = u16::from_be_bytes([rx_buf[3], rx_buf[4]]);
         Ok(v0)
+    }
+}
+
+impl<Spi, SpiError, Irq, IrqError> Xpt2046<Spi, Irq>
+where
+    Spi: SpiDevice<u8, Error = SpiError>,
+    SpiError: embedded_hal::spi::Error,
+    Irq: InputPin<Error = IrqError> + embedded_hal_async::digital::Wait,
+    IrqError: embedded_hal::digital::Error,
+{
+    pub async fn penirq_wait_for_active(&mut self) -> Result<(), Error<SpiError, IrqError>> {
+        self.irq.wait_for_low().await.map_err(|e| Error::Irq(e))
     }
 }

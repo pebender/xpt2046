@@ -44,8 +44,7 @@ where
 
 /// Runs the touch screen calibration procedure.
 pub fn run_calibration<Spi, SpiError, Irq, IrqError, DT, DTError, DELAY>(
-    touch: &mut Xpt2046<Spi>,
-    irq: &mut Irq,
+    touch: &mut Xpt2046<Spi, Irq>,
     draw_target: &mut DT,
     delay: &mut DELAY,
 ) -> Result<CalibrationData, CalibrationRunError<SpiError, IrqError, DTError>>
@@ -74,16 +73,14 @@ where
         .map_err(|e| CalibrationRunError::DrawTarget(e))?;
     touch.clear_touch();
     while !touch.is_touched() {
-        touch
-            .run(irq)
-            .map_err(|e| CalibrationRunError::Xpt2046(e))?;
+        touch.run().map_err(|e| CalibrationRunError::Xpt2046(e))?;
         delay.delay_us(500);
     }
     touch_cp.a = touch.get_touch_point_raw();
     let _ = draw_target.clear(DT::Color::BLACK);
-    while irq
-        .is_low()
-        .map_err(|e| CalibrationRunError::Xpt2046(Error::Irq(e)))?
+    while touch
+        .penirq_is_active()
+        .map_err(|e| CalibrationRunError::Xpt2046(e))?
     {
         delay.delay_ms(100);
     }
@@ -97,18 +94,16 @@ where
         .map_err(|e| CalibrationRunError::DrawTarget(e))?;
     touch.clear_touch();
     while !touch.is_touched() {
-        touch
-            .run(irq)
-            .map_err(|e| CalibrationRunError::Xpt2046(e))?;
+        touch.run().map_err(|e| CalibrationRunError::Xpt2046(e))?;
         delay.delay_us(500);
     }
     touch_cp.b = touch.get_touch_point_raw();
     draw_target
         .clear(DT::Color::BLACK)
         .map_err(|e| CalibrationRunError::DrawTarget(e))?;
-    while irq
-        .is_low()
-        .map_err(|e| CalibrationRunError::Xpt2046(Error::Irq(e)))?
+    while touch
+        .penirq_is_active()
+        .map_err(|e| CalibrationRunError::Xpt2046(e))?
     {
         delay.delay_ms(100);
     }
@@ -122,16 +117,14 @@ where
         .map_err(|e| CalibrationRunError::DrawTarget(e))?;
     touch.clear_touch();
     while !touch.is_touched() {
-        touch
-            .run(irq)
-            .map_err(|e| CalibrationRunError::Xpt2046(e))?;
+        touch.run().map_err(|e| CalibrationRunError::Xpt2046(e))?;
         delay.delay_us(500);
     }
     touch_cp.c = touch.get_touch_point_raw();
     let _ = draw_target.clear(DT::Color::BLACK);
-    while irq
-        .is_low()
-        .map_err(|e| CalibrationRunError::Xpt2046(Error::Irq(e)))?
+    while touch
+        .penirq_is_active()
+        .map_err(|e| CalibrationRunError::Xpt2046(e))?
     {
         delay.delay_ms(100);
     }

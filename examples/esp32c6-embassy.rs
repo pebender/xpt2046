@@ -241,23 +241,15 @@ async fn touch_task(
     );
 
     // Set up touch driver.
-    let mut touch_irq = Input::new(touch_irq, InputConfig::default().with_pull(Pull::Up));
+    let touch_irq = Input::new(touch_irq, InputConfig::default().with_pull(Pull::Up));
     let calibration_data = estimate_calibration_data(TOUCH_ORIENTATION, DISPLAY_SIZE);
-    let mut touch = Xpt2046::new(touch_spi_device, &calibration_data);
+    let mut touch = Xpt2046::new(touch_spi_device, touch_irq, &calibration_data);
 
     // Signal used to stop the touch runner.
     let stop = Signal::<CriticalSectionRawMutex, bool>::new();
 
     loop {
-        match touch::touch_runner(
-            &mut touch,
-            &mut touch_irq,
-            touch_commands,
-            touch_events,
-            &stop,
-        )
-        .await
-        {
+        match touch::touch_runner(&mut touch, touch_commands, touch_events, &stop).await {
             Ok(_) => {}
             Err(e) => error!("{:?}", e),
         };
@@ -405,8 +397,7 @@ pub(self) mod touch {
     /// calibrated touch point but not the raw touch point. When it is in raw
     /// mode, touch events contain both the calibrated and raw touch points.
     pub async fn touch_runner<'a, Spi, SpiError, Irq, IrqError, M, const N: usize>(
-        driver: &mut Xpt2046<Spi>,
-        irq: &mut Irq,
+        driver: &mut Xpt2046<Spi, Irq>,
         commands: &'static Channel<M, TouchCommand, N>,
         events: &'a Signal<M, TouchEvent>,
         stop: &'a Signal<M, bool>,
@@ -420,13 +411,19 @@ pub(self) mod touch {
     {
         let commands_receiver = commands.receiver();
 
-        driver.init().map_err(|e| Error::Spi(e))?;
+        driver.init()?;
         driver.clear_touch();
         let mut event_mode = TouchEventMode::Filtered;
         let mut event = TouchEvent::Up;
         loop {
-            match select3(irq.wait_for_low(), commands_receiver.receive(), stop.wait()).await {
-                Either3::First(r) => r.map_err(|e| Error::Irq(e))?,
+            match select3(
+                driver.penirq_wait_for_active(),
+                commands_receiver.receive(),
+                stop.wait(),
+            )
+            .await
+            {
+                Either3::First(penirq) => penirq?,
                 Either3::Second(command) => match command {
                     TouchCommand::UpdateCalibration(calibration_data) => {
                         driver.set_calibration_data(&calibration_data);
@@ -435,8 +432,8 @@ pub(self) mod touch {
                 },
                 Either3::Third(_b) => return Ok(()),
             }
-            while irq.is_low().map_err(|e| Error::Irq(e))? {
-                driver.run(irq)?;
+            while driver.penirq_is_active()? {
+                driver.run()?;
                 if driver.is_touched() {
                     let point = driver.get_touch_point();
                     match event_mode {

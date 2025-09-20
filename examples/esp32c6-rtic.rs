@@ -16,7 +16,7 @@ mod app {
 
     use esp_backtrace as _;
     use esp_hal::delay::Delay;
-    use esp_hal::gpio::{Event, Input, InputConfig, Level, Output, OutputConfig, Pull};
+    use esp_hal::gpio::{Input, InputConfig, Level, Output, OutputConfig, Pull};
     use esp_hal::{spi::master::Spi, Blocking};
 
     #[cfg(feature = "defmt")]
@@ -29,10 +29,10 @@ mod app {
 
     type TouchSpi<'a> =
         embedded_hal_bus::spi::ExclusiveDevice<Spi<'a, Blocking>, Output<'a>, Delay>;
+    type TouchIrq<'a> = Input<'static>;
     #[shared]
     struct Shared {
-        touch_drv: Xpt2046<TouchSpi<'static>>,
-        touch_irq: Input<'static>,
+        touch_drv: Xpt2046<TouchSpi<'static>, TouchIrq<'static>>,
     }
     #[local]
     struct Local {
@@ -69,38 +69,28 @@ mod app {
         let touch_spi_device =
             embedded_hal_bus::spi::ExclusiveDevice::new(spi_bus, touch_cs, Delay::new()).unwrap();
 
-        // Set up touch PENIRQ, including interrupt handler.
-        let mut touch_irq = Input::new(touch_irq, InputConfig::default().with_pull(Pull::Up));
-        touch_irq.listen(Event::FallingEdge);
-
         // Set up touch device.
+        let touch_irq = Input::new(touch_irq, InputConfig::default().with_pull(Pull::Up));
         let calibration_data = estimate_calibration_data(
             RelativeOrientation::new(false, true, false),
             Size::new(240, 320),
         );
-        let mut touch_drv = Xpt2046::new(touch_spi_device, &calibration_data);
+        let mut touch_drv = Xpt2046::new(touch_spi_device, touch_irq, &calibration_data);
         touch_drv.init().unwrap();
         touch_drv.clear_touch();
 
-        (
-            Shared {
-                touch_drv,
-                touch_irq,
-            },
-            Local { delay },
-        )
+        (Shared { touch_drv }, Local { delay })
     }
 
-    #[idle(local = [delay], shared = [touch_drv, touch_irq])]
+    #[idle(local = [delay], shared = [touch_drv])]
     fn idle(ctx: idle::Context) -> ! {
         let mut touch_drv = ctx.shared.touch_drv;
-        let mut touch_irq = ctx.shared.touch_irq;
         let delay = ctx.local.delay;
         loop {
-            touch_irq.lock(|irq| {
-                if irq.is_low() {
-                    touch_drv.lock(|drv| {
-                        match drv.run(irq) {
+            touch_drv.lock(|drv| match drv.penirq_is_active() {
+                Ok(irq) => {
+                    if irq {
+                        match drv.run() {
                             Ok(_) => {}
                             Err(e) => error!("{:?}", e),
                         }
@@ -108,24 +98,11 @@ mod app {
                             let p = drv.get_touch_point();
                             info!("x:{} y:{}", p.x, p.y);
                         }
-                    });
+                    }
                 }
-                if irq.is_high() {
-                    irq.clear_interrupt();
-                }
+                Err(e) => error!("{:?}", e),
             });
             delay.delay_millis(1u32);
         }
     }
-
-    /*
-    #[task(binds=GPIO, shared=[touch_irq], priority = 3)]
-    fn gpio_handler(ctx: gpio_handler::Context) {
-        let mut touch_irq = ctx.shared.touch_irq;
-        touch_irq.lock(|irq| {
-            irq.clear_interrupt();
-        });
-        info!("touch_irq");
-    }
-    */
 }
