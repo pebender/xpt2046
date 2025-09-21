@@ -494,7 +494,7 @@ where
         self.irq.is_low().map_err(|e| Error::Irq(e))
     }
 
-    /// Returns the touch position as a Point.
+    /// Returns the touch position.
     ///
     /// The touch position are the X-Position and Y-Position measurements.
     ///
@@ -508,26 +508,28 @@ where
         self.spi
             .transfer(&mut rx_buf, &TX_BUF)
             .map_err(|e| Error::Spi(e))?;
-        let x = u16::from_be_bytes([rx_buf[1], rx_buf[2]]);
-        let y = u16::from_be_bytes([rx_buf[3], rx_buf[4]]);
-        Ok(Point::new(x.into(), y.into()))
+        let x: i32 = u16::from_be_bytes([rx_buf[1], rx_buf[2]]).into();
+        let y: i32 = u16::from_be_bytes([rx_buf[3], rx_buf[4]]).into();
+        Ok(Point::new(x, y))
     }
 
-    /// Returns a tuple of touch position as a Point and the touch pressure as
-    /// an f32.
+    /// Returns a tuple of the touch position the relative touch resistance.
     ///
     /// The touch position are the X-Position and Y-Position measurements.
     ///
-    /// The relative touch pressure is calculated using the X-Position, the
+    /// The relative touch resistance is calculated using the X-Position, the
     /// Z1-Position and the Z2-Position measurements along with equation (3) on
     /// page 20 of the XPT2046 data sheet. The gives the touch resistance when
     /// the X plate resistance is known and a value proportional to the touch
     /// resistance when X plate resistance is not known known. It purports this
-    /// can be used as a measure of touch pressure.
+    /// resistance can be used as a measure of touch pressure (higher touch
+    /// resistance -> lower touch pressure).
     ///
     /// For these measurements, the ADC reference is a duel-ended (differential)
     /// reference, and the ADC output is 12-bits.
-    pub fn get_position_and_pressure(&mut self) -> Result<(Point, f32), Error<SpiError, IrqError>> {
+    pub fn get_position_and_resistance(
+        &mut self,
+    ) -> Result<(Point, i32), Error<SpiError, IrqError>> {
         const X: [u8; 2] = control_byte::ChannelSelect::XPosition.into_delayed_control_byte();
         const Y: [u8; 2] = control_byte::ChannelSelect::YPosition.into_delayed_control_byte();
         const Z1: [u8; 2] = control_byte::ChannelSelect::Z1Position.into_delayed_control_byte();
@@ -537,16 +539,16 @@ where
         self.spi
             .transfer(&mut rx_buf, &TX_BUF)
             .map_err(|e| Error::Spi(e))?;
-        let x = u16::from_be_bytes([rx_buf[1], rx_buf[2]]);
-        let y = u16::from_be_bytes([rx_buf[3], rx_buf[4]]);
-        let z1 = u16::from_be_bytes([rx_buf[5], rx_buf[6]]);
-        let z2 = u16::from_be_bytes([rx_buf[7], rx_buf[8]]);
-        let position = Point::new(x.into(), y.into());
-        let x: f32 = x.into();
-        let z1: f32 = z1.into();
-        let z2: f32 = z2.into();
-        let pressure: f32 = (x / 4096_f32) * ((z2 / z1) - 1_f32);
-        Ok((position, pressure))
+        let x: i32 = u16::from_be_bytes([rx_buf[1], rx_buf[2]]).into();
+        let y: i32 = u16::from_be_bytes([rx_buf[3], rx_buf[4]]).into();
+        let z1: i32 = u16::from_be_bytes([rx_buf[5], rx_buf[6]]).into();
+        let z2: i32 = u16::from_be_bytes([rx_buf[7], rx_buf[8]]).into();
+        let position = Point::new(x, y);
+        let resistance = match (z2 > z1) && (z1 > 0) {
+            true => (x * (z2 - z1)) / z1,
+            false => 0,
+        };
+        Ok((position, resistance))
     }
 
     /// Returns the temperature estimate in Celsius.
@@ -554,7 +556,7 @@ where
     /// The temperature estimate is calculated using the TEMP0 and TEMP1
     /// measurements along with equation (2) on page 19 of the XPT2046 data
     /// sheet. While equation (2) is supposed to provide an estimate the
-    /// temperature, I have to been able to get a sensible temperature estimate
+    /// temperature, I have not been able to get a sensible temperature estimate
     /// using the hardware I have.
     ///
     /// For these measurements, the ADC reference is a singled-ended reference
