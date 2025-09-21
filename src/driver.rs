@@ -333,7 +333,7 @@ impl TouchSampleFilter {
         self.state = TouchPanelState::IDLE;
     }
 
-    pub fn update(&mut self, sample: (u16, u16)) {
+    pub fn update(&mut self, sample: Point) {
         match self.state {
             TouchPanelState::IDLE => {
                 self.index = 0;
@@ -348,9 +348,8 @@ impl TouchSampleFilter {
                 }
             }
             TouchPanelState::BUFFERING => {
-                let point = Point::new(sample.0.into(), sample.1.into());
-                self.total += point;
-                self.buffer[self.index] = point;
+                self.total += sample;
+                self.buffer[self.index] = sample;
                 self.index += 1;
                 if self.index == TOUCH_SAMPLE_BUFFER_SIZE {
                     self.index = 0;
@@ -358,10 +357,9 @@ impl TouchSampleFilter {
                 }
             }
             TouchPanelState::TOUCHED => {
-                let point = Point::new(sample.0.into(), sample.1.into());
                 self.total -= self.buffer[self.index];
-                self.total += point;
-                self.buffer[self.index] = point;
+                self.total += sample;
+                self.buffer[self.index] = sample;
                 self.index += 1;
                 if self.index == TOUCH_SAMPLE_BUFFER_SIZE {
                     self.index = 0;
@@ -417,7 +415,7 @@ where
     pub fn init(&mut self) -> Result<(), Error<SpiError, IrqError>> {
         // Make a throwaway position measurement so that the internal voltage
         // reference is disabled and PENIRQ is enabled.
-        _ = self.measure_xy_positions()?;
+        _ = self.get_position()?;
 
         self.filter.reset();
 
@@ -450,9 +448,9 @@ where
             return Ok(false);
         }
         match self.filter.settled() {
-            false => self.filter.update((0, 0)),
+            false => self.filter.update(Point::zero()),
             true => {
-                let sample = self.measure_xy_positions()?;
+                let sample = self.get_position()?;
                 self.filter.update(sample);
             }
         }
@@ -496,19 +494,125 @@ where
         self.irq.is_low().map_err(|e| Error::Irq(e))
     }
 
+    /// Returns the touch position as a Point.
+    ///
+    /// The touch position are the X-Position and Y-Position measurements.
+    ///
+    /// For these measurements, the ADC reference is a duel-ended (differential)
+    /// reference, and the ADC output is 12-bits.
+    pub fn get_position(&mut self) -> Result<Point, Error<SpiError, IrqError>> {
+        const X: [u8; 2] = control_byte::ChannelSelect::XPosition.into_delayed_control_byte();
+        const Y: [u8; 2] = control_byte::ChannelSelect::YPosition.into_delayed_control_byte();
+        const TX_BUF: [u8; 5] = [X[0], X[1], Y[0], Y[1], 0];
+        let mut rx_buf = [0; 5];
+        self.spi
+            .transfer(&mut rx_buf, &TX_BUF)
+            .map_err(|e| Error::Spi(e))?;
+        let x = u16::from_be_bytes([rx_buf[1], rx_buf[2]]);
+        let y = u16::from_be_bytes([rx_buf[3], rx_buf[4]]);
+        Ok(Point::new(x.into(), y.into()))
+    }
+
+    /// Returns a tuple of touch position as a Point and the touch pressure as
+    /// an f32.
+    ///
+    /// The touch position are the X-Position and Y-Position measurements.
+    ///
+    /// The relative touch pressure is calculated using the X-Position, the
+    /// Z1-Position and the Z2-Position measurements along with equation (3) on
+    /// page 20 of the XPT2046 data sheet. The gives the touch resistance when
+    /// the X plate resistance is known and a value proportional to the touch
+    /// resistance when X plate resistance is not known known. It purports this
+    /// can be used as a measure of touch pressure.
+    ///
+    /// For these measurements, the ADC reference is a duel-ended (differential)
+    /// reference, and the ADC output is 12-bits.
+    pub fn get_position_and_pressure(&mut self) -> Result<(Point, f32), Error<SpiError, IrqError>> {
+        const X: [u8; 2] = control_byte::ChannelSelect::XPosition.into_delayed_control_byte();
+        const Y: [u8; 2] = control_byte::ChannelSelect::YPosition.into_delayed_control_byte();
+        const Z1: [u8; 2] = control_byte::ChannelSelect::Z1Position.into_delayed_control_byte();
+        const Z2: [u8; 2] = control_byte::ChannelSelect::Z2Position.into_delayed_control_byte();
+        const TX_BUF: [u8; 9] = [X[0], X[1], Y[0], Y[1], Z1[0], Z1[1], Z2[0], Z2[1], 0];
+        let mut rx_buf = [0; 9];
+        self.spi
+            .transfer(&mut rx_buf, &TX_BUF)
+            .map_err(|e| Error::Spi(e))?;
+        let x = u16::from_be_bytes([rx_buf[1], rx_buf[2]]);
+        let y = u16::from_be_bytes([rx_buf[3], rx_buf[4]]);
+        let z1 = u16::from_be_bytes([rx_buf[5], rx_buf[6]]);
+        let z2 = u16::from_be_bytes([rx_buf[7], rx_buf[8]]);
+        let position = Point::new(x.into(), y.into());
+        let x: f32 = x.into();
+        let z1: f32 = z1.into();
+        let z2: f32 = z2.into();
+        let pressure: f32 = (x / 4096_f32) * ((z2 / z1) - 1_f32);
+        Ok((position, pressure))
+    }
+
+    /// Returns the temperature estimate in Celsius.
+    ///
+    /// The temperature estimate is calculated using the TEMP0 and TEMP1
+    /// measurements along with equation (2) on page 19 of the XPT2046 data
+    /// sheet. While equation (2) is supposed to provide an estimate the
+    /// temperature, I have to been able to get a sensible temperature estimate
+    /// using the hardware I have.
+    ///
+    /// For these measurements, the ADC reference is a singled-ended reference
+    /// using the internal 2.5V reference, and the ADC output is 12-bits.
+    pub fn get_temperature(&mut self) -> Result<f32, Error<SpiError, IrqError>> {
+        const RE: [u8; 2] = control_byte::INTERNAL_REFERENCE_ENABLE;
+        const TEMP0: [u8; 2] = control_byte::ChannelSelect::TEMP0.into_delayed_control_byte();
+        const TEMP1: [u8; 2] = control_byte::ChannelSelect::TEMP1.into_delayed_control_byte();
+        const TX_BUF: [u8; 9] = [
+            RE[0], RE[1], TEMP0[0], TEMP0[1], RE[0], RE[1], TEMP1[0], TEMP1[1], 0,
+        ];
+        let mut rx_buf = [0; 9];
+        self.spi
+            .transfer(&mut rx_buf, &TX_BUF)
+            .map_err(|e| Error::Spi(e))?;
+        let temp0: f32 = u16::from_be_bytes([rx_buf[3], rx_buf[4]]).into();
+        let temp0: f32 = (2.5_f32 * 1000_f32 / 4095_f32) * temp0;
+        let temp1: f32 = u16::from_be_bytes([rx_buf[7], rx_buf[8]]).into();
+        let temp1: f32 = (2.5_f32 * 1000_f32 / 4095_f32) * temp1;
+        let temperature: f32 = 2.573_f32 * (temp1 - temp0) - 273.0_f32;
+        Ok(temperature)
+    }
+
+    /// Battery voltage measurement in mV.
+    ///
+    /// The battery voltage is calculate using the VBAT measurement. According
+    /// to page 19 of the XPT2046 data sheet, VBAT corresponds to 1/4 of the
+    /// battery voltage.
+    ///
+    /// For this measurement, the ADC reference is a singled-ended reference
+    /// using the internal 2.5V reference, and the ADC output is 12-bits.
+    pub fn get_battery_voltage(&mut self) -> Result<f32, Error<SpiError, IrqError>> {
+        const RE: [u8; 2] = control_byte::INTERNAL_REFERENCE_ENABLE;
+        const VBAT: [u8; 2] = control_byte::ChannelSelect::VBAT.into_delayed_control_byte();
+        const TX_BUF: [u8; 5] = [RE[0], RE[1], VBAT[0], VBAT[1], 0];
+        let mut rx_buf: [u8; _] = [0; 5];
+        self.spi
+            .transfer(&mut rx_buf, &TX_BUF)
+            .map_err(|e| Error::Spi(e))?;
+        let vbat: f32 = u16::from_be_bytes([rx_buf[3], rx_buf[4]]).into();
+        let vbat: f32 = (2.5_f32 * 1000_f32 / 4095_f32) * vbat;
+        let battery_voltage: f32 = 4_f32 * vbat;
+        Ok(battery_voltage)
+    }
+
     /// Returns the X-Position measurement.
     ///
     /// For this measurement, the ADC reference is a duel-ended (differential)
     /// reference, and the ADC output is 12-bits.
     pub fn measure_x_position(&mut self) -> Result<u16, Error<SpiError, IrqError>> {
-        const M0: [u8; 2] = control_byte::ChannelSelect::XPosition.into_delayed_control_byte();
-        const TX_BUF: [u8; 3] = [M0[0], M0[1], 0];
+        const X: [u8; 2] = control_byte::ChannelSelect::XPosition.into_delayed_control_byte();
+        const TX_BUF: [u8; 3] = [X[0], X[1], 0];
         let mut rx_buf = [0; 3];
         self.spi
             .transfer(&mut rx_buf, &TX_BUF)
             .map_err(|e| Error::Spi(e))?;
-        let v0 = u16::from_be_bytes([rx_buf[1], rx_buf[2]]);
-        Ok(v0)
+        let x = u16::from_be_bytes([rx_buf[1], rx_buf[2]]);
+        Ok(x)
     }
 
     /// Returns the Y-Position measurement.
@@ -516,14 +620,14 @@ where
     /// For this measurement, the ADC reference is a duel-ended (differential)
     /// reference, and the ADC output is 12-bits.
     pub fn measure_y_position(&mut self) -> Result<u16, Error<SpiError, IrqError>> {
-        const M0: [u8; 2] = control_byte::ChannelSelect::YPosition.into_delayed_control_byte();
-        const TX_BUF: [u8; 3] = [M0[0], M0[1], 0];
+        const Y: [u8; 2] = control_byte::ChannelSelect::YPosition.into_delayed_control_byte();
+        const TX_BUF: [u8; 3] = [Y[0], Y[1], 0];
         let mut rx_buf = [0; 3];
         self.spi
             .transfer(&mut rx_buf, &TX_BUF)
             .map_err(|e| Error::Spi(e))?;
-        let v0 = u16::from_be_bytes([rx_buf[1], rx_buf[2]]);
-        Ok(v0)
+        let y = u16::from_be_bytes([rx_buf[1], rx_buf[2]]);
+        Ok(y)
     }
 
     /// Returns the Z1-Position measurement.
@@ -531,14 +635,14 @@ where
     /// For this measurement, the ADC reference is a duel-ended (differential)
     /// reference, and the ADC output is 12-bits.
     pub fn measure_z1_position(&mut self) -> Result<u16, Error<SpiError, IrqError>> {
-        const M0: [u8; 2] = control_byte::ChannelSelect::Z1Position.into_delayed_control_byte();
-        const TX_BUF: [u8; 3] = [M0[0], M0[1], 0];
+        const Z1: [u8; 2] = control_byte::ChannelSelect::Z1Position.into_delayed_control_byte();
+        const TX_BUF: [u8; 3] = [Z1[0], Z1[1], 0];
         let mut rx_buf = [0; 3];
         self.spi
             .transfer(&mut rx_buf, &TX_BUF)
             .map_err(|e| Error::Spi(e))?;
-        let v0 = u16::from_be_bytes([rx_buf[1], rx_buf[2]]);
-        Ok(v0)
+        let z1 = u16::from_be_bytes([rx_buf[1], rx_buf[2]]);
+        Ok(z1)
     }
 
     /// Returns the Z2-Position measurement.
@@ -546,161 +650,82 @@ where
     /// For this measurement, the ADC reference is a duel-ended (differential)
     /// reference, and the ADC output is 12-bits.
     pub fn measure_z2_position(&mut self) -> Result<u16, Error<SpiError, IrqError>> {
-        const M0: [u8; 2] = control_byte::ChannelSelect::Z2Position.into_delayed_control_byte();
-        const TX_BUF: [u8; 3] = [M0[0], M0[1], 0];
+        const Z2: [u8; 2] = control_byte::ChannelSelect::Z2Position.into_delayed_control_byte();
+        const TX_BUF: [u8; 3] = [Z2[0], Z2[1], 0];
         let mut rx_buf = [0; 3];
         self.spi
             .transfer(&mut rx_buf, &TX_BUF)
             .map_err(|e| Error::Spi(e))?;
-        let value = u16::from_be_bytes([rx_buf[1], rx_buf[2]]);
-        Ok(value)
+        let z2 = u16::from_be_bytes([rx_buf[1], rx_buf[2]]);
+        Ok(z2)
     }
 
-    /// Returns the X-Position and Y-Position measurements as the tuple
-    /// (X-Position,Y-Position).
+    /// Returns the TEMP0 measurement in mV.
     ///
-    /// For these measurements, the ADC reference is a duel-ended (differential)
-    /// reference, and the ADC output is 12-bits.
-    pub fn measure_xy_positions(&mut self) -> Result<(u16, u16), Error<SpiError, IrqError>> {
-        const M0: [u8; 2] = control_byte::ChannelSelect::XPosition.into_delayed_control_byte();
-        const M1: [u8; 2] = control_byte::ChannelSelect::YPosition.into_delayed_control_byte();
-        const TX_BUF: [u8; 5] = [M0[0], M0[1], M1[0], M1[1], 0];
+    /// For this measurement, the ADC reference is a singled-ended reference
+    /// using the internal 2.5V reference, and the ADC output is 12-bits.
+    pub fn measure_temp0(&mut self) -> Result<f32, Error<SpiError, IrqError>> {
+        const RE: [u8; 2] = control_byte::INTERNAL_REFERENCE_ENABLE;
+        const TEMP0: [u8; 2] = control_byte::ChannelSelect::TEMP0.into_delayed_control_byte();
+        const TX_BUF: [u8; 5] = [RE[0], RE[1], TEMP0[0], TEMP0[1], 0];
         let mut rx_buf = [0; 5];
         self.spi
             .transfer(&mut rx_buf, &TX_BUF)
             .map_err(|e| Error::Spi(e))?;
-        let v0 = u16::from_be_bytes([rx_buf[1], rx_buf[2]]);
-        let v1 = u16::from_be_bytes([rx_buf[3], rx_buf[4]]);
-        Ok((v0, v1))
+        let temp0: f32 = u16::from_be_bytes([rx_buf[3], rx_buf[4]]).into();
+        let temp0: f32 = (2.5_f32 * 1000_f32 / 4095_f32) * temp0;
+        Ok(temp0)
     }
 
-    /// Returns the X-Position, Y-Position, Z1-Position and Z2-Position
-    /// measurements as the tuple
-    /// (X-Position,Y-Position,Z1-Position,Z2-Position).
-    ///
-    /// For these measurements, the ADC reference is a duel-ended (differential)
-    /// reference, and the ADC output is 12-bits.
-    ///
-    /// On page 20, the XPT2046 data sheet gives an equation for using the
-    /// X-Position, Z1-Position and Z2-Position measurements to calculate the
-    /// value of the touch resistance when the X plate resistance is known (and
-    /// a value proportional to touch resistance when X plate resistance is not
-    /// known known). It purports this can be used as a measure of touch
-    /// pressure.
-    pub fn measure_xyz_positions(
-        &mut self,
-    ) -> Result<(u16, u16, u16, u16), Error<SpiError, IrqError>> {
-        const M0: [u8; 2] = control_byte::ChannelSelect::XPosition.into_delayed_control_byte();
-        const M1: [u8; 2] = control_byte::ChannelSelect::YPosition.into_delayed_control_byte();
-        const M2: [u8; 2] = control_byte::ChannelSelect::Z1Position.into_delayed_control_byte();
-        const M3: [u8; 2] = control_byte::ChannelSelect::Z2Position.into_delayed_control_byte();
-        const TX_BUF: [u8; 9] = [M0[0], M0[1], M1[0], M1[1], M2[0], M2[1], M3[0], M3[1], 0];
-        let mut rx_buf = [0; 9];
-        self.spi
-            .transfer(&mut rx_buf, &TX_BUF)
-            .map_err(|e| Error::Spi(e))?;
-        let v0 = u16::from_be_bytes([rx_buf[1], rx_buf[2]]);
-        let v1 = u16::from_be_bytes([rx_buf[3], rx_buf[4]]);
-        let v2 = u16::from_be_bytes([rx_buf[5], rx_buf[6]]);
-        let v3 = u16::from_be_bytes([rx_buf[7], rx_buf[8]]);
-        Ok((v0, v1, v2, v3))
-    }
-
-    /// Returns the TEMP0 measurement.
+    /// Returns the TEMP1 measurement in mV.
     ///
     /// For this measurement, the ADC reference is a singled-ended reference
     /// using the internal 2.5V reference, and the ADC output is 12-bits.
-    ///
-    /// According to pages 18-19 of the XPT2046 data sheet, TEMP0 can be used
-    /// alone or in conjunction with TEMP1 to calculate an estimate the ambient
-    /// temperature. However, I have to been able to get a sensible temperature
-    /// estimate using the hardware I have.
-    pub fn measure_temp0(&mut self) -> Result<u16, Error<SpiError, IrqError>> {
+    pub fn measure_temp1(&mut self) -> Result<f32, Error<SpiError, IrqError>> {
         const RE: [u8; 2] = control_byte::INTERNAL_REFERENCE_ENABLE;
-        const M0: [u8; 2] = control_byte::ChannelSelect::TEMP0.into_delayed_control_byte();
-        const TX_BUF: [u8; 5] = [RE[0], RE[1], M0[0], M0[1], 0];
+        const TEMP1: [u8; 2] = control_byte::ChannelSelect::TEMP1.into_delayed_control_byte();
+        const TX_BUF: [u8; 5] = [RE[0], RE[1], TEMP1[0], TEMP1[1], 0];
         let mut rx_buf = [0; 5];
         self.spi
             .transfer(&mut rx_buf, &TX_BUF)
             .map_err(|e| Error::Spi(e))?;
-        let v0 = u16::from_be_bytes([rx_buf[3], rx_buf[4]]);
-        Ok(v0)
+        let temp1: f32 = u16::from_be_bytes([rx_buf[3], rx_buf[4]]).into();
+        let temp1: f32 = (2.5_f32 * 1000_f32 / 4095_f32) * temp1;
+        Ok(temp1)
     }
 
-    /// Returns the TEMP1 measurement.
+    /// Returns the VBAT measurement in mV.
     ///
     /// For this measurement, the ADC reference is a singled-ended reference
     /// using the internal 2.5V reference, and the ADC output is 12-bits.
-    ///
-    /// According to pages 18-19 of the XPT2046 data sheet, TEMP1 can be used in
-    /// conjunction with TEMP0 to calculate an estimate the ambient temperature.
-    /// However, I have to been able to get a sensible temperature estimate
-    /// using the hardware I have.
-    pub fn measure_temp1(&mut self) -> Result<u16, Error<SpiError, IrqError>> {
+    pub fn measure_vbat(&mut self) -> Result<f32, Error<SpiError, IrqError>> {
         const RE: [u8; 2] = control_byte::INTERNAL_REFERENCE_ENABLE;
-        const M0: [u8; 2] = control_byte::ChannelSelect::TEMP1.into_delayed_control_byte();
-        const TX_BUF: [u8; 5] = [RE[0], RE[1], M0[0], M0[1], 0];
-        let mut rx_buf = [0; 5];
-        self.spi
-            .transfer(&mut rx_buf, &TX_BUF)
-            .map_err(|e| Error::Spi(e))?;
-        let v0 = u16::from_be_bytes([rx_buf[3], rx_buf[4]]);
-        Ok(v0)
-    }
-
-    /// Returns the TEMP0 and TEMP1 measurements as the tuple (TEMP0,TEMP1).
-    ///
-    /// For these measurements, the ADC reference is a singled-ended reference
-    /// using the internal 2.5V reference, and the ADC output is 12-bits.
-    ///
-    /// According to pages 18-19 of the XPT2046 data sheet, TEMP0 and TEMP1 can
-    /// be used to calculate an estimate the ambient temperature. However, I
-    /// have to been able to get a sensible temperature estimate using the
-    /// hardware I have.
-    pub fn measure_temps(&mut self) -> Result<(u16, u16), Error<SpiError, IrqError>> {
-        const RE: [u8; 2] = control_byte::INTERNAL_REFERENCE_ENABLE;
-        const M0: [u8; 2] = control_byte::ChannelSelect::TEMP0.into_delayed_control_byte();
-        const M1: [u8; 2] = control_byte::ChannelSelect::TEMP1.into_delayed_control_byte();
-        const TX_BUF: [u8; 9] = [RE[0], RE[1], M0[0], M0[1], RE[0], RE[1], M1[0], M1[1], 0];
-        let mut rx_buf = [0; 9];
-        self.spi
-            .transfer(&mut rx_buf, &TX_BUF)
-            .map_err(|e| Error::Spi(e))?;
-        let v0 = u16::from_be_bytes([rx_buf[3], rx_buf[4]]);
-        let v1 = u16::from_be_bytes([rx_buf[7], rx_buf[8]]);
-        Ok((v0, v1))
-    }
-
-    /// Returns the VBAT measurement.
-    ///
-    /// For this measurement, the ADC reference is a singled-ended reference
-    /// using the internal 2.5V reference, and the ADC output is 12-bits.
-    pub fn measure_vbat(&mut self) -> Result<u16, Error<SpiError, IrqError>> {
-        const RE: [u8; 2] = control_byte::INTERNAL_REFERENCE_ENABLE;
-        const M0: [u8; 2] = control_byte::ChannelSelect::VBAT.into_delayed_control_byte();
-        const TX_BUF: [u8; 5] = [RE[0], RE[1], M0[0], M0[1], 0];
+        const VBAT: [u8; 2] = control_byte::ChannelSelect::VBAT.into_delayed_control_byte();
+        const TX_BUF: [u8; 5] = [RE[0], RE[1], VBAT[0], VBAT[1], 0];
         let mut rx_buf: [u8; _] = [0; 5];
         self.spi
             .transfer(&mut rx_buf, &TX_BUF)
             .map_err(|e| Error::Spi(e))?;
-        let v0 = u16::from_be_bytes([rx_buf[3], rx_buf[4]]);
-        Ok(v0)
+        let vbat: f32 = u16::from_be_bytes([rx_buf[3], rx_buf[4]]).into();
+        let vbat: f32 = (2.5_f32 * 1000_f32 / 4095_f32) * vbat;
+        Ok(vbat)
     }
 
-    /// Returns the AUXIN measurement.
+    /// Returns the AUXIN measurement in mV.
     ///
     /// For this measurement, the ADC reference is a singled-ended reference
     /// using the internal 2.5V reference, and the ADC output is 12-bits.
-    pub fn measure_auxin(&mut self) -> Result<u16, Error<SpiError, IrqError>> {
+    pub fn measure_auxin(&mut self) -> Result<f32, Error<SpiError, IrqError>> {
         const RE: [u8; 2] = control_byte::INTERNAL_REFERENCE_ENABLE;
-        const M0: [u8; 2] = control_byte::ChannelSelect::AUXIN.into_delayed_control_byte();
-        const TX_BUF: [u8; 5] = [RE[0], RE[1], M0[0], M0[1], 0];
+        const AUXIN: [u8; 2] = control_byte::ChannelSelect::AUXIN.into_delayed_control_byte();
+        const TX_BUF: [u8; 5] = [RE[0], RE[1], AUXIN[0], AUXIN[1], 0];
         let mut rx_buf: [u8; _] = [0; 5];
         self.spi
             .transfer(&mut rx_buf, &TX_BUF)
             .map_err(|e| Error::Spi(e))?;
-        let v0 = u16::from_be_bytes([rx_buf[3], rx_buf[4]]);
-        Ok(v0)
+        let auxin: f32 = u16::from_be_bytes([rx_buf[3], rx_buf[4]]).into();
+        let auxin: f32 = (2.5_f32 * 1000_f32 / 4095_f32) * auxin;
+        Ok(auxin)
     }
 }
 
