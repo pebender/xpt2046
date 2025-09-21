@@ -287,43 +287,98 @@ pub struct CalibrationData {
     pub delta_y: f32,
 }
 
-/// Current state of the driver
+/// The touch panel state.
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(Debug, PartialEq)]
 enum TouchPanelState {
-    /// Waiting for a touch (waiting for PENIRQ to go low).
+    /// Waiting for a touch to be detected (waiting for PENIRQ to go low).
     IDLE,
-    /// Letting the touch panel settle.
+    /// Letting the touch settle.
     SETTLING,
-    /// Buffering touch samples for the touch sample filter.
+    /// Collecting touch samples for the filtered touch sample output.
     BUFFERING,
     /// A touch has been reliably detected and filtered.
     TOUCHED,
 }
 
-/// A circular buffer for storing and filtering touch samples.
+/// The touch sample filter.
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(Debug)]
-struct TouchSampleBuffer {
-    /// A buffer of the last TOUCH_SAMPLE_BUFFER_SIZE touch samples.
+struct TouchSampleFilter {
+    /// A circular buffer of the last [TOUCH_SAMPLE_BUFFER_SIZE] touch samples.
     buffer: [Point; TOUCH_SAMPLE_BUFFER_SIZE],
-    total: Point,
-    /// The index in the buffer where the next touch sample will be stored.
+    /// The index in the circular buffer where the next touch sample will be stored.
     index: usize,
+    /// The total of the circular buffer.
+    total: Point,
+    /// The current state of the touch.
+    state: TouchPanelState,
 }
 
-impl Default for TouchSampleBuffer {
+impl Default for TouchSampleFilter {
     fn default() -> Self {
         Self {
             buffer: [Point::zero(); TOUCH_SAMPLE_BUFFER_SIZE],
-            total: Point::zero(),
             index: 0,
+            total: Point::zero(),
+            state: TouchPanelState::IDLE,
         }
     }
 }
 
-impl TouchSampleBuffer {
-    pub fn average(&self) -> Point {
+impl TouchSampleFilter {
+    pub fn reset(&mut self) {
+        self.index = 0;
+        self.total = Point::zero();
+        self.state = TouchPanelState::IDLE;
+    }
+
+    pub fn update(&mut self, sample: (u16, u16)) {
+        match self.state {
+            TouchPanelState::IDLE => {
+                self.index = 0;
+                self.state = TouchPanelState::SETTLING;
+            }
+            TouchPanelState::SETTLING => {
+                self.index += 1;
+                if self.index == TOUCH_SAMPLE_BUFFER_SIZE {
+                    self.index = 0;
+                    self.total = Point::zero();
+                    self.state = TouchPanelState::BUFFERING;
+                }
+            }
+            TouchPanelState::BUFFERING => {
+                let point = Point::new(sample.0.into(), sample.1.into());
+                self.total += point;
+                self.buffer[self.index] = point;
+                self.index += 1;
+                if self.index == TOUCH_SAMPLE_BUFFER_SIZE {
+                    self.index = 0;
+                    self.state = TouchPanelState::TOUCHED;
+                }
+            }
+            TouchPanelState::TOUCHED => {
+                let point = Point::new(sample.0.into(), sample.1.into());
+                self.total -= self.buffer[self.index];
+                self.total += point;
+                self.buffer[self.index] = point;
+                self.index += 1;
+                if self.index == TOUCH_SAMPLE_BUFFER_SIZE {
+                    self.index = 0;
+                }
+            }
+        }
+    }
+
+    pub fn settled(&self) -> bool {
+        (self.state == TouchPanelState::BUFFERING) || (self.state == TouchPanelState::TOUCHED)
+    }
+
+    pub fn touched(&self) -> bool {
+        self.state == TouchPanelState::TOUCHED
+    }
+
+    pub fn value(&self) -> Point {
         self.total / (TOUCH_SAMPLE_BUFFER_SIZE as i32)
     }
 }
@@ -336,10 +391,8 @@ pub struct Xpt2046<Spi, Irq> {
     spi: Spi,
     /// The PENIRQ pin
     irq: Irq,
-    /// Current driver state
-    panel_state: TouchPanelState,
-    /// Buffer for the touch measurement samples
-    sample_buffer: TouchSampleBuffer,
+    /// The touch sample filter
+    filter: TouchSampleFilter,
     /// Calibration data for transforming touch measurements into display pixel positions.
     calibration_data: CalibrationData,
 }
@@ -355,8 +408,7 @@ where
         Self {
             spi,
             irq,
-            panel_state: TouchPanelState::IDLE,
-            sample_buffer: TouchSampleBuffer::default(),
+            filter: TouchSampleFilter::default(),
             calibration_data: *calibration_data,
         }
     }
@@ -367,7 +419,7 @@ where
         // reference is disabled and PENIRQ is enabled.
         _ = self.measure_xy_positions()?;
 
-        self.panel_state = TouchPanelState::IDLE;
+        self.filter.reset();
 
         Ok(())
     }
@@ -380,7 +432,7 @@ where
     }
 
     pub fn run_init(&mut self) {
-        self.panel_state = TouchPanelState::IDLE;
+        self.filter.reset();
     }
 
     /// Collects the touch position measurements.
@@ -394,41 +446,14 @@ where
     /// that calls run().
     pub fn run(&mut self) -> Result<bool, Error<SpiError, IrqError>> {
         if self.irq.is_high().map_err(|e| Error::Irq(e))? {
-            self.panel_state = TouchPanelState::IDLE;
+            self.filter.reset();
             return Ok(false);
         }
-        match self.panel_state {
-            TouchPanelState::IDLE => {
-                self.sample_buffer.index = 0;
-                self.panel_state = TouchPanelState::SETTLING;
-            }
-            TouchPanelState::SETTLING => {
-                self.sample_buffer.index += 1;
-                self.sample_buffer.index %= TOUCH_SAMPLE_BUFFER_SIZE;
-                if self.sample_buffer.index == 0 {
-                    self.sample_buffer.total = Point::zero();
-                    self.panel_state = TouchPanelState::BUFFERING;
-                }
-            }
-            TouchPanelState::BUFFERING => {
-                let (x, y) = self.measure_xy_positions()?;
-                let point = Point::new(x.into(), y.into());
-                self.sample_buffer.total += point;
-                self.sample_buffer.buffer[self.sample_buffer.index] = point;
-                self.sample_buffer.index += 1;
-                self.sample_buffer.index %= TOUCH_SAMPLE_BUFFER_SIZE;
-                if self.sample_buffer.index == 0 {
-                    self.panel_state = TouchPanelState::TOUCHED;
-                }
-            }
-            TouchPanelState::TOUCHED => {
-                let (x, y) = self.measure_xy_positions()?;
-                let point = Point::new(x.into(), y.into());
-                self.sample_buffer.total -= self.sample_buffer.buffer[self.sample_buffer.index];
-                self.sample_buffer.total += point;
-                self.sample_buffer.buffer[self.sample_buffer.index] = point;
-                self.sample_buffer.index += 1;
-                self.sample_buffer.index %= TOUCH_SAMPLE_BUFFER_SIZE;
+        match self.filter.settled() {
+            false => self.filter.update((0, 0)),
+            true => {
+                let sample = self.measure_xy_positions()?;
+                self.filter.update(sample);
             }
         }
         Ok(true)
@@ -438,29 +463,28 @@ where
     ///
     /// This is made available for use in touch screen calibration procedures.
     pub fn get_touch_point_raw(&self) -> Point {
-        self.sample_buffer.average()
+        self.filter.value()
     }
 
     /// Returns the touch position in display pixel units.
     pub fn get_touch_point(&self) -> Point {
-        let raw_point = self.get_touch_point_raw();
+        let point_raw = self.filter.value();
 
-        let x = raw_point.x as f32;
-        let y = raw_point.y as f32;
+        let x = point_raw.x as f32;
+        let y = point_raw.y as f32;
         let x = self.calibration_data.alpha_x * x
             + self.calibration_data.beta_x * y
             + self.calibration_data.delta_x;
         let y = self.calibration_data.alpha_y * x
             + self.calibration_data.beta_y * y
             + self.calibration_data.delta_y;
-        let x = x as i32;
-        let y = y as i32;
-        Point::new(x, y)
+
+        Point::new(x as i32, y as i32)
     }
 
     /// Check if the display is currently touched
     pub fn is_touched(&self) -> bool {
-        self.panel_state == TouchPanelState::TOUCHED
+        self.filter.touched()
     }
 
     /// This calls run init.
