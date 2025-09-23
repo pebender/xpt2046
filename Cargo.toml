@@ -88,7 +88,7 @@ defmt-rtt = { version = "1.0.0" }
 embedded-hal-bus = { version = "0.3.0" }
 panic-halt = { version = "1.0.0" }
 rtic = { version = "2.2.0", features = ["thumbv7-backend"] }
-stm32f4xx-hal = { version = "0.22.1", features = ["stm32f411"] }
+stm32f4xx-hal = { version = "0.23.0", features = ["stm32f411"] }
 
 [patch.crates-io]
 # embassy-executor 0.8.0 is required to statically allocate task pools without

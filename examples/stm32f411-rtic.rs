@@ -45,13 +45,14 @@ mod app {
     fn init(ctx: init::Context) -> (Shared, Local) {
         let device_peripherals = ctx.device;
 
-        let rcc = device_peripherals.RCC.constrain();
-        let clocks = rcc.cfgr.use_hse(25.MHz()).sysclk(100.MHz()).freeze();
+        let mut rcc = device_peripherals
+            .RCC
+            .freeze(stm32f4xx_hal::rcc::Config::hse(25.MHz()).sysclk(100.MHz()));
 
-        let delay = device_peripherals.TIM1.delay_us(&clocks);
+        let delay = device_peripherals.TIM1.delay_us(&mut rcc);
 
         // Pins in GPIO Port A.
-        let gpioa = device_peripherals.GPIOA.split();
+        let gpioa = device_peripherals.GPIOA.split(&mut rcc);
 
         let spi = device_peripherals.SPI1;
         let spi_sclk = gpioa.pa5;
@@ -61,19 +62,17 @@ mod app {
         let touch_irq = gpioa.pa2;
 
         // Set up SPI bus.
-        let spi_sclk = spi_sclk.into_alternate();
-        let spi_miso = spi_miso.into_alternate();
-        let spi_mosi = spi_mosi.into_alternate().internal_pull_up(true);
+        let spi_mosi = spi_mosi.internal_pull_up(true);
         let spi_mode = Mode {
             polarity: Polarity::IdleLow,
             phase: Phase::CaptureOnFirstTransition,
         };
         let spi = Spi::new(
             spi,
-            (spi_sclk, spi_miso, spi_mosi),
+            (Some(spi_sclk), Some(spi_miso), Some(spi_mosi)),
             spi_mode,
             2.MHz(),
-            &clocks,
+            &mut rcc,
         );
         let spi_bus = spi;
 
