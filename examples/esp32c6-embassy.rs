@@ -398,7 +398,7 @@ pub(self) mod touch {
     /// mode, touch events contain both the calibrated and raw touch points.
     pub async fn touch_runner<'a, Spi, SpiError, Irq, IrqError, M, const N: usize>(
         driver: &mut Xpt2046<Spi, Irq>,
-        commands: &'static Channel<M, TouchCommand, N>,
+        commands: &'a Channel<M, TouchCommand, N>,
         events: &'a Signal<M, TouchEvent>,
         stop: &'a Signal<M, bool>,
     ) -> Result<(), Error<SpiError, IrqError>>
