@@ -348,7 +348,10 @@ pub(self) mod touch {
         /// The tuple is (calibrated_touch_point, raw_touch_point)
         Move((Point, Option<Point>)),
         /// Touch is no longer detected.
-        Up,
+        ///
+        /// The tuple is (calibrated_touch_point, raw_touch_point)
+        Up((Point, Option<Point>)),
+        Cancel,
     }
 
     #[cfg_attr(feature = "defmt", derive(defmt::Format))]
@@ -414,7 +417,7 @@ pub(self) mod touch {
         driver.init()?;
         driver.clear_touch();
         let mut event_mode = TouchEventMode::Filtered;
-        let mut event = TouchEvent::Up;
+        let mut event = TouchEvent::Cancel;
         loop {
             match select3(
                 driver.penirq_wait_for_active(),
@@ -435,38 +438,69 @@ pub(self) mod touch {
             while driver.penirq_is_active()? {
                 driver.run()?;
                 if driver.is_touched() {
-                    let point = driver.get_touch_point();
                     match event_mode {
                         TouchEventMode::Filtered => {
+                            let point = driver.get_touch_point();
                             if point.x >= 0
                                 && point.x < DISPLAY_SIZE.width as i32
                                 && point.y >= 0
                                 && point.y < DISPLAY_SIZE.height as i32
                             {
                                 match event {
-                                    TouchEvent::Up => {
-                                        event = TouchEvent::Down((point, None));
-                                        events.signal(event);
+                                    TouchEvent::Cancel | TouchEvent::Up(_) => {
+                                        match events.try_take() {
+                                            Some(_) => {
+                                                event = TouchEvent::Cancel;
+                                                events.signal(event);
+                                            }
+                                            None => {
+                                                event = TouchEvent::Down((point, None));
+                                                events.signal(event);
+                                            }
+                                        }
                                     }
                                     TouchEvent::Down((p, _)) | TouchEvent::Move((p, _)) => {
                                         if point != p {
-                                            event = TouchEvent::Move((point, None));
-                                            events.signal(event);
+                                            match events.try_take() {
+                                                Some(_) => {
+                                                    event = TouchEvent::Cancel;
+                                                    events.signal(event);
+                                                }
+                                                None => {
+                                                    event = TouchEvent::Move((point, None));
+                                                    events.signal(event);
+                                                }
+                                            }
                                         }
                                     }
                                 }
                             }
                         }
                         TouchEventMode::Raw => {
+                            let point = driver.get_touch_point();
                             let point_raw = driver.get_touch_point_raw();
                             match event {
-                                TouchEvent::Up => {
-                                    event = TouchEvent::Down((point, Some(point_raw)));
-                                    events.signal(event);
-                                }
+                                TouchEvent::Cancel | TouchEvent::Up(_) => match events.try_take() {
+                                    Some(_) => {
+                                        event = TouchEvent::Cancel;
+                                        events.signal(event);
+                                    }
+                                    None => {
+                                        event = TouchEvent::Down((point, Some(point_raw)));
+                                        events.signal(event);
+                                    }
+                                },
                                 TouchEvent::Down(_) | TouchEvent::Move(_) => {
-                                    event = TouchEvent::Move((point, Some(point_raw)));
-                                    events.signal(event);
+                                    match events.try_take() {
+                                        Some(_) => {
+                                            event = TouchEvent::Cancel;
+                                            events.signal(event);
+                                        }
+                                        None => {
+                                            event = TouchEvent::Move((point, Some(point_raw)));
+                                            events.signal(event);
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -489,9 +523,20 @@ pub(self) mod touch {
                     Either3::Third(_b) => return Ok(()),
                 }
             }
+            match event {
+                TouchEvent::Cancel | TouchEvent::Up(_) => {}
+                TouchEvent::Down(v) | TouchEvent::Move(v) => match events.try_take() {
+                    Some(_) => {
+                        event = TouchEvent::Cancel;
+                        events.signal(event);
+                    }
+                    None => {
+                        event = TouchEvent::Up(v);
+                        events.signal(event);
+                    }
+                },
+            }
             driver.clear_touch();
-            event = TouchEvent::Up;
-            events.signal(event);
         }
     }
 }
@@ -582,7 +627,7 @@ pub(self) mod display {
                             .into_styled(PrimitiveStyle::with_fill(DT::Color::WHITE))
                             .draw(display)?
                     }
-                    TouchEvent::Up => {}
+                    TouchEvent::Cancel | TouchEvent::Up(_) => {}
                 },
                 Either3::Third(_b) => return Ok(()),
             }
