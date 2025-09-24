@@ -19,3 +19,12 @@ rustflags = [
 [env]
 DEFMT_LOG = "trace"
 ESP_LOG = "trace"
+
+[profile.dev]
+opt-level="s"
+
+[profile.release]
+opt-level="s"
+
+[prov]
+
