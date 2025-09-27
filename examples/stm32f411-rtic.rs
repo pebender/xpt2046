@@ -105,7 +105,7 @@ mod app {
 
         loop {
             touch_drv.lock(|drv| {
-                if drv.penirq_is_active().unwrap() {
+                if drv.irq_is_active().unwrap() {
                     drv.run().unwrap();
                 }
                 if drv.is_touched() {

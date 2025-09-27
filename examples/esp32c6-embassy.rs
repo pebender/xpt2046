@@ -420,13 +420,13 @@ pub(self) mod touch {
         let mut event = TouchEvent::Cancel;
         loop {
             match select3(
-                driver.penirq_wait_for_active(),
+                driver.irq_wait_for_active(),
                 commands_receiver.receive(),
                 stop.wait(),
             )
             .await
             {
-                Either3::First(penirq) => penirq?,
+                Either3::First(irq) => irq?,
                 Either3::Second(command) => match command {
                     TouchCommand::UpdateCalibration(calibration_data) => {
                         driver.set_calibration_data(&calibration_data);
@@ -435,7 +435,7 @@ pub(self) mod touch {
                 },
                 Either3::Third(_b) => return Ok(()),
             }
-            while driver.penirq_is_active()? {
+            while driver.irq_is_active()? {
                 driver.run()?;
                 if driver.is_touched() {
                     match event_mode {

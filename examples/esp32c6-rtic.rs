@@ -87,7 +87,7 @@ mod app {
         let mut touch_drv = ctx.shared.touch_drv;
         let delay = ctx.local.delay;
         loop {
-            touch_drv.lock(|drv| match drv.penirq_is_active() {
+            touch_drv.lock(|drv| match drv.irq_is_active() {
                 Ok(irq) => {
                     if irq {
                         match drv.run() {

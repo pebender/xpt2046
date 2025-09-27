@@ -490,7 +490,7 @@ where
         self.run_init();
     }
 
-    pub fn penirq_is_active(&mut self) -> Result<bool, Error<SpiError, IrqError>> {
+    pub fn irq_is_active(&mut self) -> Result<bool, Error<SpiError, IrqError>> {
         self.irq.is_low().map_err(|e| Error::Irq(e))
     }
 
@@ -738,7 +738,7 @@ where
     Irq: InputPin<Error = IrqError> + embedded_hal_async::digital::Wait,
     IrqError: embedded_hal::digital::Error,
 {
-    pub async fn penirq_wait_for_active(&mut self) -> Result<(), Error<SpiError, IrqError>> {
+    pub async fn irq_wait_for_active(&mut self) -> Result<(), Error<SpiError, IrqError>> {
         self.irq.wait_for_low().await.map_err(|e| Error::Irq(e))
     }
 }

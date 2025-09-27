@@ -79,7 +79,7 @@ where
     touch_cp.a = touch.get_touch_point_raw();
     let _ = draw_target.clear(DT::Color::BLACK);
     while touch
-        .penirq_is_active()
+        .irq_is_active()
         .map_err(|e| CalibrationRunError::Xpt2046(e))?
     {
         delay.delay_ms(100);
@@ -102,7 +102,7 @@ where
         .clear(DT::Color::BLACK)
         .map_err(|e| CalibrationRunError::DrawTarget(e))?;
     while touch
-        .penirq_is_active()
+        .irq_is_active()
         .map_err(|e| CalibrationRunError::Xpt2046(e))?
     {
         delay.delay_ms(100);
@@ -123,7 +123,7 @@ where
     touch_cp.c = touch.get_touch_point_raw();
     let _ = draw_target.clear(DT::Color::BLACK);
     while touch
-        .penirq_is_active()
+        .irq_is_active()
         .map_err(|e| CalibrationRunError::Xpt2046(e))?
     {
         delay.delay_ms(100);
